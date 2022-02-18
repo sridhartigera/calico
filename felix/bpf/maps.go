@@ -46,7 +46,7 @@ type Map interface {
 	MapFD() MapFD
 	// Path returns the path that the map is (to be) pinned to.
 	Path() string
-
+	
 	// SetMaxEntries sets the max entries of the pinned map
 	SetMaxEntries(maxEntries int)
 
@@ -105,6 +105,8 @@ type PinnedMap struct {
 
 	fdLoaded bool
 	fd       MapFD
+	oldfd    MapFD
+	currentSize int
 	perCPU   bool
 }
 
@@ -290,6 +292,41 @@ func (b *PinnedMap) Delete(k []byte) error {
 	return DeleteMapEntry(b.fd, k, b.ValueSize)
 }
 
+func (b *PinnedMap) copyFromOldMap() error {
+	numEntriesCopied := 0
+        it, err := NewMapIterator(b.oldfd, b.KeySize, b.ValueSize, b.currentSize)
+        if err != nil {
+                return fmt.Errorf("failed to create BPF map iterator: %w", err)
+        }
+        defer func() {
+                err := it.Close()
+                if err != nil {
+                        logrus.WithError(err).Panic("Unexpected error from map iterator Close().")
+                }
+        }()
+
+        for {
+                k, v, err := it.Next()
+	
+                if err != nil {
+                        if err == ErrIterationFinished {
+                                return nil
+                        }
+                        return errors.Errorf("iterating the map failed: %s", err)
+                }
+
+		if numEntriesCopied == b.MaxEntries {
+			return fmt.Errorf("new map size cannot hold all the data from the old map")
+		}
+
+		err = b.Update(k, v)
+		if err != nil {
+			return fmt.Errorf("error copying data from the old map")
+		}
+		numEntriesCopied++
+        }
+}
+
 func (b *PinnedMap) Open() error {
 	if b.fdLoaded {
 		return nil
@@ -406,7 +443,7 @@ func (b *PinnedMap) EnsureExists() error {
 
 	if err := b.Open(); err == nil {
 		// store the old fd
-		oldfd = b.MapFD()
+		b.oldfd = b.MapFD()
 
 		// Get the existing map info
 		mapInfo, err := GetMapInfo(b.fd)
@@ -417,6 +454,7 @@ func (b *PinnedMap) EnsureExists() error {
 		if b.pinnedMapMatchesConfiguration(mapInfo.MaxEntries) {
 			return nil
 		}
+		b.currentSize = mapInfo.MaxEntries
 		err = b.migratePinnedMap(b.Path(), b.Path()+"_old")
 		if err != nil {
 			return fmt.Errorf("error migrating the old map %w", err)
@@ -448,6 +486,13 @@ func (b *PinnedMap) EnsureExists() error {
 	if err == nil {
 		b.fdLoaded = true
 		// Delete the old pin if migration had happened and migration was successful.
+		if oldfd != 0 {
+			err := b.copyFromOldMap()
+			if err != nil {
+				logrus.WithError(err).Error("error copying data from old map")
+				return err
+			}
+		}
 		if _, err := os.Stat(b.Path() + "_old"); err == nil {
 			os.Remove(b.Path() + "_old")
 		}
