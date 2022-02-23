@@ -46,7 +46,7 @@ type Map interface {
 	MapFD() MapFD
 	// Path returns the path that the map is (to be) pinned to.
 	Path() string
-	
+
 	// SetMaxEntries sets the max entries of the pinned map
 	SetMaxEntries(maxEntries int)
 
@@ -115,11 +115,11 @@ type PinnedMap struct {
 	context *MapContext
 	MapParameters
 
-	fdLoaded bool
-	fd       MapFD
-	oldfd    MapFD
+	fdLoaded    bool
+	fd          MapFD
+	oldfd       MapFD
 	currentSize int
-	perCPU   bool
+	perCPU      bool
 }
 
 func (b *PinnedMap) GetName() string {
@@ -306,37 +306,38 @@ func (b *PinnedMap) Delete(k []byte) error {
 
 func (b *PinnedMap) copyFromOldMap() error {
 	numEntriesCopied := 0
-        it, err := NewMapIterator(b.oldfd, b.KeySize, b.ValueSize, b.currentSize)
-        if err != nil {
-                return fmt.Errorf("failed to create BPF map iterator: %w", err)
-        }
-        defer func() {
-                err := it.Close()
-                if err != nil {
-                        logrus.WithError(err).Panic("Unexpected error from map iterator Close().")
-                }
-        }()
+	it, err := NewMapIterator(b.oldfd, b.KeySize, b.ValueSize, b.currentSize)
+	if err != nil {
+		return fmt.Errorf("failed to create BPF map iterator: %w", err)
+	}
+	defer func() {
+		err := it.Close()
+		if err != nil {
+			logrus.WithError(err).Panic("Unexpected error from map iterator Close().")
+		}
+	}()
 
-        for {
-                k, v, err := it.Next()
-	
-                if err != nil {
-                        if err == ErrIterationFinished {
-                                return nil
-                        }
-                        return errors.Errorf("iterating the map failed: %s", err)
-                }
+	for {
+		k, v, err := it.Next()
+
+		if err != nil {
+			if err == ErrIterationFinished {
+				return nil
+			}
+			return errors.Errorf("iterating the old map failed: %s", err)
+		}
 
 		if numEntriesCopied == b.MaxEntries {
-			return fmt.Errorf("new map size cannot hold all the data from the old map")
+			return fmt.Errorf("new map cannot hold all the data from the old map.")
 		}
 
 		err = b.Update(k, v)
 		if err != nil {
 			return fmt.Errorf("error copying data from the old map")
 		}
+		logrus.Debugf("copied data from old map to new map key=%v, value=%v", k, v)
 		numEntriesCopied++
-        }
+	}
 }
 
 func (b *PinnedMap) Open() error {
@@ -415,7 +416,6 @@ func (b *PinnedMap) oldMapExists() bool {
 }
 
 func (b *PinnedMap) EnsureExists() error {
-	var oldfd MapFD
 	oldMapPath := b.Path() + "_old"
 	if b.fdLoaded {
 		return nil
@@ -455,8 +455,8 @@ func (b *PinnedMap) EnsureExists() error {
 
 	// Close the oldfd for the maps to be removed from the kernel.
 	defer func() {
-		if oldfd != 0 {
-			oldfd.Close()
+		if b.oldfd != 0 {
+			b.oldfd.Close()
 		}
 	}()
 
@@ -478,7 +478,7 @@ func (b *PinnedMap) EnsureExists() error {
 	if err == nil {
 		b.fdLoaded = true
 		// Delete the old pin if migration had happened and migration was successful.
-		if oldfd != 0 {
+		if b.oldfd != 0 {
 			err := b.copyFromOldMap()
 			if err != nil {
 				logrus.WithError(err).Error("error copying data from old map")
