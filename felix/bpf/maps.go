@@ -75,7 +75,7 @@ func versionedStr(ver int, str string) string {
 	return fmt.Sprintf("%s%d", str, ver)
 }
 
-func (mp *MapParameters) versionedName() string {
+func (mp *MapParameters) VersionedName() string {
 	return versionedStr(mp.Version, mp.Name)
 }
 
@@ -100,9 +100,13 @@ type MapContext struct {
 }
 
 func (c *MapContext) NewPinnedMap(params MapParameters) Map {
-	if len(params.versionedName()) >= unix.BPF_OBJ_NAME_LEN {
+	if len(params.VersionedName()) >= unix.BPF_OBJ_NAME_LEN {
 		logrus.WithField("name", params.Name).Panic("Bug: BPF map name too long")
 	}
+	if val, ok := c.MapSizes[params.VersionedName()]; ok {
+		params.MaxEntries = int(val)
+	}
+
 	m := &PinnedMap{
 		context:       c,
 		MapParameters: params,
@@ -118,12 +122,13 @@ type PinnedMap struct {
 	fdLoaded    bool
 	fd          MapFD
 	oldfd       MapFD
-	currentSize int
+	oldSize int
+	copyData bool
 	perCPU      bool
 }
 
 func (b *PinnedMap) GetName() string {
-	return b.versionedName()
+	return b.VersionedName()
 }
 
 func (b *PinnedMap) MapFD() MapFD {
@@ -144,6 +149,8 @@ func (b *PinnedMap) SetMaxEntries(maxEntries int) {
 func (b *PinnedMap) Close() error {
 	err := b.fd.Close()
 	b.fdLoaded = false
+	b.copyData = false
+	b.oldfd = 0
 	b.fd = 0
 	return err
 }
@@ -306,7 +313,7 @@ func (b *PinnedMap) Delete(k []byte) error {
 
 func (b *PinnedMap) copyFromOldMap() error {
 	numEntriesCopied := 0
-	it, err := NewMapIterator(b.oldfd, b.KeySize, b.ValueSize, b.currentSize)
+	it, err := NewMapIterator(b.oldfd, b.KeySize, b.ValueSize, b.oldSize)
 	if err != nil {
 		return fmt.Errorf("failed to create BPF map iterator: %w", err)
 	}
@@ -365,7 +372,7 @@ func (b *PinnedMap) Open() error {
 		logrus.Debug("Map file didn't exist")
 		if b.context.RepinningEnabled {
 			logrus.WithField("name", b.Name).Info("Looking for map by name (to repin it)")
-			err = RepinMap(b.versionedName(), b.versionedFilename())
+			err = RepinMap(b.VersionedName(), b.versionedFilename())
 			if err != nil && !os.IsNotExist(err) {
 				return err
 			}
@@ -388,13 +395,8 @@ func (b *PinnedMap) Open() error {
 }
 
 // nolint
-func (b *PinnedMap) pinnedMapMatchesConfiguration(maxEntries int) bool {
-	return maxEntries == b.MaxEntries
-}
-
-// nolint
 func (b *PinnedMap) migratePinnedMap(from, to string) error {
-	err := RepinMap(b.versionedName(), to)
+	err := RepinMap(b.VersionedName(), to)
 	if err != nil {
 		return fmt.Errorf("error repinning %s to %s: %w", from, to, err)
 	}
@@ -443,22 +445,21 @@ func (b *PinnedMap) EnsureExists() error {
 			return fmt.Errorf("error getting map info of the pinned map %w", err)
 		}
 
-		if b.pinnedMapMatchesConfiguration(mapInfo.MaxEntries) {
+		b.oldSize = mapInfo.MaxEntries
+		if b.MaxEntries == mapInfo.MaxEntries {
 			return nil
 		}
-		b.currentSize = mapInfo.MaxEntries
+
 		err = b.migratePinnedMap(b.Path(), oldMapPath)
 		if err != nil {
 			return fmt.Errorf("error migrating the old map %w", err)
 		}
-	}
-
-	// Close the oldfd for the maps to be removed from the kernel.
-	defer func() {
-		if b.oldfd != 0 {
+		b.copyData = true
+		defer func() {
 			b.oldfd.Close()
-		}
-	}()
+			b.oldfd = 0
+		}()
+	}
 
 	logrus.Debug("Map didn't exist, creating it")
 	cmd := exec.Command("bpftool", "map", "create", b.versionedFilename(),
@@ -466,7 +467,7 @@ func (b *PinnedMap) EnsureExists() error {
 		"key", fmt.Sprint(b.KeySize),
 		"value", fmt.Sprint(b.ValueSize),
 		"entries", fmt.Sprint(b.MaxEntries),
-		"name", b.versionedName(),
+		"name", b.VersionedName(),
 		"flags", fmt.Sprint(b.Flags),
 	)
 	out, err := cmd.CombinedOutput()
@@ -477,16 +478,17 @@ func (b *PinnedMap) EnsureExists() error {
 	b.fd, err = GetMapFDByPin(b.versionedFilename())
 	if err == nil {
 		b.fdLoaded = true
-		// Delete the old pin if migration had happened and migration was successful.
-		if b.oldfd != 0 {
+		// Copy data from old map to the new map
+		if b.copyData {
 			err := b.copyFromOldMap()
 			if err != nil {
 				logrus.WithError(err).Error("error copying data from old map")
 				return err
 			}
-		}
-		if _, err := os.Stat(oldMapPath); err == nil {
+			// Delete the old pin.
 			os.Remove(b.Path() + "_old")
+			b.copyData = false
+
 		}
 		logrus.WithField("fd", b.fd).WithField("name", b.versionedFilename()).
 			Info("Loaded map file descriptor.")
