@@ -119,12 +119,12 @@ type PinnedMap struct {
 	context *MapContext
 	MapParameters
 
-	fdLoaded    bool
-	fd          MapFD
-	oldfd       MapFD
-	oldSize int
+	fdLoaded bool
+	fd       MapFD
+	oldfd    MapFD
+	oldSize  int
 	copyData bool
-	perCPU      bool
+	perCPU   bool
 }
 
 func (b *PinnedMap) GetName() string {
