@@ -80,7 +80,11 @@ func printInsn(cmd *cobra.Command, insn asm.Insn) {
 	for _, value := range insn.Instruction {
 		cmd.Printf("%02x", value)
 	}
-	cmd.Printf(" %v\n", insn)
+	cmd.Printf(" %v", insn)
+	if insn.Annotation != "" {
+		cmd.Printf("     %s", insn.Annotation)
+	}
+	cmd.Println()
 }
 
 func dumpPolicyInfo(cmd *cobra.Command, iface, hook string) error {

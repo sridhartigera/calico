@@ -29,6 +29,11 @@ import (
 type OpCode uint8
 type Reg int
 
+type FieldOffset struct {
+	Offset int16
+	Field  string
+}
+
 //noinspection GoUnusedConst
 const (
 	// Registers.
@@ -280,6 +285,7 @@ type Insn struct {
 	Instruction [insnSize]uint8 `json:"inst"`
 	Labels      []string        `json:"labels,omitempty"`
 	Comments    []string        `json:"comments,omitempty"`
+	Annotation  string          `json:"annotation,omitempty"`
 }
 
 type Insns []Insn
@@ -379,52 +385,76 @@ func (b *Block) LoadMapFD(dst Reg, fd uint32) {
 	b.add(LoadImm64Pt2, 0, 0, 0, 0)
 }
 
-func (b *Block) Load8(dst Reg, ptrReg Reg, offset int16) {
-	b.add(LoadReg8, dst, ptrReg, offset, 0)
+func (b *Block) Load8(dst Reg, ptrReg Reg, fo FieldOffset) {
+	b.add(LoadReg8, dst, ptrReg, fo.Offset, 0)
+	if fo.Field != "" {
+		b.addAnnotation(fmt.Sprintf("R%d=%s", dst, fo.Field))
+	}
 }
 
-func (b *Block) Load16(dst Reg, ptrReg Reg, offset int16) {
-	b.add(LoadReg16, dst, ptrReg, offset, 0)
+func (b *Block) Load16(dst Reg, ptrReg Reg, fo FieldOffset) {
+	b.add(LoadReg16, dst, ptrReg, fo.Offset, 0)
+	if fo.Field != "" {
+		b.addAnnotation(fmt.Sprintf("R%d=%s", dst, fo.Field))
+	}
 }
 
-func (b *Block) Load32(dst Reg, ptrReg Reg, offset int16) {
-	b.add(LoadReg32, dst, ptrReg, offset, 0)
+func (b *Block) Load32(dst Reg, ptrReg Reg, fo FieldOffset) {
+	b.add(LoadReg32, dst, ptrReg, fo.Offset, 0)
+	if fo.Field != "" {
+		b.addAnnotation(fmt.Sprintf("R%d=%s", dst, fo.Field))
+	}
 }
 
-func (b *Block) Load64(dst Reg, ptrReg Reg, offset int16) {
-	b.add(LoadReg64, dst, ptrReg, offset, 0)
+func (b *Block) Load64(dst Reg, ptrReg Reg, fo FieldOffset) {
+	b.add(LoadReg64, dst, ptrReg, fo.Offset, 0)
+	if fo.Field != "" {
+		b.addAnnotation(fmt.Sprintf("R%d=%s", dst, fo.Field))
+	}
 }
 
-func (b *Block) Store8(dst Reg, ptrReg Reg, offset int16) {
-	b.add(StoreReg8, dst, ptrReg, offset, 0)
+func (b *Block) Store8(dst Reg, ptrReg Reg, fo FieldOffset) {
+	b.add(StoreReg8, dst, ptrReg, fo.Offset, 0)
+	if fo.Field != "" {
+		b.addAnnotation(fmt.Sprintf("%s=R%d", fo.Field, ptrReg))
+	}
 }
 
-func (b *Block) Store16(dst Reg, ptrReg Reg, offset int16) {
-	b.add(StoreReg16, dst, ptrReg, offset, 0)
+func (b *Block) Store16(dst Reg, ptrReg Reg, fo FieldOffset) {
+	b.add(StoreReg16, dst, ptrReg, fo.Offset, 0)
+	if fo.Field != "" {
+		b.addAnnotation(fmt.Sprintf("%s=R%d", fo.Field, ptrReg))
+	}
 }
 
-func (b *Block) Store32(dst Reg, ptrReg Reg, offset int16) {
-	b.add(StoreReg32, dst, ptrReg, offset, 0)
+func (b *Block) Store32(dst Reg, ptrReg Reg, fo FieldOffset) {
+	b.add(StoreReg32, dst, ptrReg, fo.Offset, 0)
+	if fo.Field != "" {
+		b.addAnnotation(fmt.Sprintf("%s=R%d", fo.Field, ptrReg))
+	}
 }
 
-func (b *Block) Store64(dst Reg, ptrReg Reg, offset int16) {
-	b.add(StoreReg64, dst, ptrReg, offset, 0)
+func (b *Block) Store64(dst Reg, ptrReg Reg, fo FieldOffset) {
+	b.add(StoreReg64, dst, ptrReg, fo.Offset, 0)
+	if fo.Field != "" {
+		b.addAnnotation(fmt.Sprintf("%s=R%d", fo.Field, ptrReg))
+	}
 }
 
-func (b *Block) LoadStack8(dst Reg, offset int16) {
-	b.Load8(dst, R10, offset)
+func (b *Block) LoadStack8(dst Reg, fo FieldOffset) {
+	b.Load8(dst, R10, fo)
 }
 
-func (b *Block) LoadStack16(dst Reg, offset int16) {
-	b.Load16(dst, R10, offset)
+func (b *Block) LoadStack16(dst Reg, fo FieldOffset) {
+	b.Load16(dst, R10, fo)
 }
 
-func (b *Block) LoadStack32(dst Reg, offset int16) {
-	b.Load32(dst, R10, offset)
+func (b *Block) LoadStack32(dst Reg, fo FieldOffset) {
+	b.Load32(dst, R10, fo)
 }
 
-func (b *Block) LoadStack64(dst Reg, offset int16) {
-	b.Load64(dst, R10, offset)
+func (b *Block) LoadStack64(dst Reg, fo FieldOffset) {
+	b.Load64(dst, R10, fo)
 }
 
 func (b *Block) StoreStack8(src Reg, offset int16) {
@@ -549,6 +579,10 @@ func (b *Block) addWithOffsetFixup(opcode OpCode, dst, src Reg, offsetLabel stri
 
 func (b *Block) addInsn(insn Insn) {
 	b.addInsnWithOffsetFixup(insn, "")
+}
+
+func (b *Block) addAnnotation(annotation string) {
+	b.insns[len(b.insns)-1].Annotation = annotation
 }
 
 type OffsetFixer func(origInsn Insn) Insn
