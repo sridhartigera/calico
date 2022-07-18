@@ -368,6 +368,9 @@ configRetry:
 	// If we get here, we've loaded the configuration successfully.
 	// Update log levels before we do anything else.
 	logutils.ConfigureLogging(configParams)
+
+	var lookupsCache *calc.LookupsCache
+	lookupsCache = calc.NewLookupsCache()
 	// Since we may have enabled more logging, log with the build context
 	// again.
 	buildInfoLogCxt.WithField("config", configParams).Info(
@@ -416,7 +419,8 @@ configRetry:
 		healthAggregator,
 		configChangedRestartCallback,
 		fatalErrorCallback,
-		k8sClientSet)
+		k8sClientSet,
+		lookupsCache,)
 
 	// Initialise the glue logic that connects the calculation graph to/from the dataplane driver.
 	log.Info("Connect to the dataplane driver.")
@@ -556,7 +560,7 @@ configRetry:
 	asyncCalcGraph := calc.NewAsyncCalcGraph(
 		configParams.Copy(), // Copy to avoid concurrent access.
 		calcGraphClientChannels,
-		healthAggregator)
+		healthAggregator, lookupsCache,)
 
 	if configParams.UsageReportingEnabled {
 		// Usage reporting enabled, add stats collector to graph.  When it detects an update

@@ -130,3 +130,11 @@ func (a *IDAllocator) GetAndRelease(id string) uint64 {
 	delete(a.strToUint64, id)
 	return oldID
 }
+
+// GetReverse returns the original value (id) based on the generated id - if it
+// exists.
+func (a *IDAllocator) GetReverse(id64 uint64) (string, bool) {
+        id, ok := a.uint64ToStr[id64]
+        return id, ok
+}
+

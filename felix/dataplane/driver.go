@@ -54,13 +54,14 @@ import (
 	"github.com/projectcalico/calico/felix/rules"
 	"github.com/projectcalico/calico/felix/wireguard"
 	"github.com/projectcalico/calico/libcalico-go/lib/health"
+	"github.com/projectcalico/calico/felix/calc"
 )
 
 func StartDataplaneDriver(configParams *config.Config,
 	healthAggregator *health.HealthAggregator,
 	configChangedRestartCallback func(),
 	fatalErrorCallback func(error),
-	k8sClientSet *kubernetes.Clientset) (DataplaneDriver, *exec.Cmd) {
+	k8sClientSet *kubernetes.Clientset, lc *calc.LookupsCache) (DataplaneDriver, *exec.Cmd) {
 
 	if !configParams.IsLeader() {
 		// Return an inactive dataplane, since we're not the leader.
@@ -338,6 +339,7 @@ func StartDataplaneDriver(configParams *config.Config,
 			RouteSource: configParams.RouteSource,
 
 			KubernetesProvider: configParams.KubernetesProvider(),
+			LookupsCache: lc,
 		}
 
 		if configParams.BPFExternalServiceMode == "dsr" {

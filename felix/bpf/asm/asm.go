@@ -458,6 +458,13 @@ func (b *Block) MovImm32(dst Reg, imm int32) {
 func (b *Block) AddImm64(dst Reg, imm int32) {
 	b.add(AddImm64, dst, 0, 0, imm)
 }
+func (b *Block) ShiftLImm64(dst Reg, imm int32) {
+        b.add(ShiftLImm64, dst, 0, 0, imm)
+}
+
+func (b *Block) Add64(dst, src Reg) {
+        b.add(Add64, dst, src, 0, 0)
+}
 
 func (b *Block) Jump(label string) {
 	b.addWithOffsetFixup(JumpA, 0, 0, label, 0)

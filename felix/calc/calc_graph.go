@@ -111,7 +111,7 @@ type CalcGraph struct {
 	activeRulesCalculator *ActiveRulesCalculator
 }
 
-func NewCalculationGraph(callbacks PipelineCallbacks, conf *config.Config) *CalcGraph {
+func NewCalculationGraph(callbacks PipelineCallbacks, conf *config.Config, cache *LookupsCache) *CalcGraph {
 	hostname := conf.FelixHostname
 	log.Infof("Creating calculation graph, filtered to hostname %v", hostname)
 
@@ -414,6 +414,10 @@ func NewCalculationGraph(callbacks PipelineCallbacks, conf *config.Config) *Calc
 	//
 	encapsulationResolver := NewEncapsulationResolver(conf, callbacks)
 	encapsulationResolver.RegisterWith(allUpdDispatcher)
+
+	if cache != nil {
+		activeRulesCalc.PolicyLookupCache = cache.polCache
+	}
 
 	return &CalcGraph{
 		AllUpdDispatcher:      allUpdDispatcher,

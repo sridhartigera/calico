@@ -40,6 +40,7 @@ import (
 	"github.com/projectcalico/api/pkg/lib/numorstring"
 
 	"github.com/projectcalico/calico/felix/bpf"
+	"github.com/projectcalico/calico/felix/calc"
 	"github.com/projectcalico/calico/felix/bpf/bpfmap"
 	"github.com/projectcalico/calico/felix/bpf/conntrack"
 	"github.com/projectcalico/calico/felix/bpf/failsafes"
@@ -221,6 +222,8 @@ type Config struct {
 	RouteSource string
 
 	KubernetesProvider config.Provider
+
+	LookupsCache *calc.LookupsCache
 }
 
 type UpdateBatchResolver interface {
@@ -284,6 +287,7 @@ type InternalDataplane struct {
 	managersWithRouteTables []ManagerWithRouteTables
 	managersWithRouteRules  []ManagerWithRouteRules
 	ruleRenderer            rules.RuleRenderer
+	lookupCache *calc.LookupsCache
 
 	// dataplaneNeedsSync is set if the dataplane is dirty in some way, i.e. we need to
 	// call apply().
@@ -642,6 +646,7 @@ func NewIntDataplaneDriver(config Config) *InternalDataplane {
 		)
 		dp.RegisterManager(failsafeMgr)
 
+		config.LookupsCache.EnableID64()
 		workloadIfaceRegex := regexp.MustCompile(strings.Join(interfaceRegexes, "|"))
 		bpfEndpointManager, err = newBPFEndpointManager(
 			nil,
@@ -654,6 +659,7 @@ func NewIntDataplaneDriver(config Config) *InternalDataplane {
 			filterTableV4,
 			dp.reportHealth,
 			dp.loopSummarizer,
+			config.LookupsCache,
 		)
 
 		if err != nil {
