@@ -33,3 +33,16 @@ func Map(mc *bpf.MapContext, pinPath string) bpf.Map {
 func MapForTest(mc *bpf.MapContext) bpf.Map {
 	return mc.NewPinnedMap(MapParameters)
 }
+
+var RuleCounterParameters = bpf.MapParameters{
+	Filename:   "/sys/fs/bpf/tc/globals/cali_rule_ctrs",
+	Type: "percpu_hash",
+	KeySize: 8,
+	ValueSize: 16,
+	MaxEntries: 32,
+	Name: "cali_rule_ctrs",
+}
+
+func RuleCountersMap(mc *bpf.MapContext) bpf.Map {
+	return mc.NewPinnedMap(MapParameters)
+}

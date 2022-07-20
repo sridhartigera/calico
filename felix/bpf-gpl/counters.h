@@ -5,6 +5,7 @@
 #ifndef __CALI_COUNTERS_H__
 #define __CALI_COUNTERS_H__
 
+#include "types.h"
 #define MAX_COUNTERS_SIZE 14
 
 typedef __u64 counters_t[MAX_COUNTERS_SIZE];
