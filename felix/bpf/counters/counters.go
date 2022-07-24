@@ -23,8 +23,15 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/projectcalico/calico/felix/bpf"
+	"github.com/projectcalico/calico/felix/calc"
 	"github.com/projectcalico/calico/felix/bpf/tc"
 )
+
+var LookupsCache *calc.LookupsCache
+
+func SetLookupsCache (lookupsCache *calc.LookupsCache) {
+	LookupsCache = lookupsCache
+}
 
 const (
 	MaxCounterNumber    int = 14

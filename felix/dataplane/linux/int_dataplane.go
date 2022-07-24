@@ -40,6 +40,7 @@ import (
 	"github.com/projectcalico/api/pkg/lib/numorstring"
 
 	"github.com/projectcalico/calico/felix/bpf"
+	"github.com/projectcalico/calico/felix/bpf/counters"
 	"github.com/projectcalico/calico/felix/calc"
 	"github.com/projectcalico/calico/felix/bpf/bpfmap"
 	"github.com/projectcalico/calico/felix/bpf/conntrack"
@@ -647,6 +648,7 @@ func NewIntDataplaneDriver(config Config) *InternalDataplane {
 		dp.RegisterManager(failsafeMgr)
 
 		config.LookupsCache.EnableID64()
+		counters.SetLookupsCache(config.LookupsCache)
 		workloadIfaceRegex := regexp.MustCompile(strings.Join(interfaceRegexes, "|"))
 		bpfEndpointManager, err = newBPFEndpointManager(
 			nil,
