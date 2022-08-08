@@ -377,8 +377,8 @@ func NewRuleID(tier, policy, namespace string, ruleIndex int, ruleDirection rule
 		IndexStr:  strconv.Itoa(ruleIndex),
 		Action:    ruleAction,
 	}
-//	rid.setDeniedPacketRuleName()
-//	rid.setFlowLogPolicyName()
+	//	rid.setDeniedPacketRuleName()
+	//	rid.setFlowLogPolicyName()
 	return rid
 }
 
@@ -504,7 +504,7 @@ func (r *RuleID) setFlowLogPolicyName() {
 			r.NameString(),
 			r.ActionString(),
 		)
-	//} else if strings.HasPrefix(r.Name, "knp.default") || strings.HasPrefix(r.Name, model.PolicyNamePrefixStaged+"knp.default") {
+		//} else if strings.HasPrefix(r.Name, "knp.default") || strings.HasPrefix(r.Name, model.PolicyNamePrefixStaged+"knp.default") {
 	} else if strings.HasPrefix(r.Name, "knp.default") {
 		r.fpName = fmt.Sprintf(
 			"%s|%s/%s|%s",
@@ -568,12 +568,12 @@ func deconstructPolicyName(name string) (string, string, string, error) {
 	}
 
 	/*
-	// Remove the staged prefix if present so we can extract the tier.
-	var stagedPrefix string
-	if model.PolicyIsStaged(name) {
-		stagedPrefix = model.PolicyNamePrefixStaged
-		name = name[len(model.PolicyNamePrefixStaged):]
-	}*/
+		// Remove the staged prefix if present so we can extract the tier.
+		var stagedPrefix string
+		if model.PolicyIsStaged(name) {
+			stagedPrefix = model.PolicyNamePrefixStaged
+			name = name[len(model.PolicyNamePrefixStaged):]
+		}*/
 
 	// If the policy name starts with "knp.default" then this is a kubernetes network policy.
 	if strings.HasPrefix(name, "knp.default.") {

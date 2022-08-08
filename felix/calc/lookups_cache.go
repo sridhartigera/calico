@@ -2,13 +2,11 @@
 
 package calc
 
-import (
-	//kapiv1 "k8s.io/api/core/v1"
-	//"k8s.io/kubernetes/pkg/proxy"
+//kapiv1 "k8s.io/api/core/v1"
+//"k8s.io/kubernetes/pkg/proxy"
 
-	//"github.com/projectcalico/calico/libcalico-go/lib/backend/api"
-	//"github.com/projectcalico/calico/libcalico-go/lib/backend/model"
-)
+//"github.com/projectcalico/calico/libcalico-go/lib/backend/api"
+//"github.com/projectcalico/calico/libcalico-go/lib/backend/model"
 
 // LookupsCache provides an API to do the following:
 // - lookup endpoint information given an IP
@@ -20,21 +18,22 @@ import (
 // - PolicyLookupsCache
 type LookupsCache struct {
 	polCache *PolicyLookupsCache
-//	epCache  *EndpointLookupsCache
-//	nsCache  *NetworkSetLookupsCache
-//	svcCache *ServiceLookupsCache
+	//	epCache  *EndpointLookupsCache
+	//	nsCache  *NetworkSetLookupsCache
+	//	svcCache *ServiceLookupsCache
 }
 
 func NewLookupsCache() *LookupsCache {
 	lc := &LookupsCache{
 		polCache: NewPolicyLookupsCache(),
 		/*
-		epCache:  NewEndpointLookupsCache(),
-		nsCache:  NewNetworkSetLookupsCache(),
-		svcCache: NewServiceLookupsCache(),*/
+			epCache:  NewEndpointLookupsCache(),
+			nsCache:  NewNetworkSetLookupsCache(),
+			svcCache: NewServiceLookupsCache(),*/
 	}
 	return lc
 }
+
 /*
 // IsEndpoint returns true if the supplied address is a endpoint, otherwise returns false.
 // Use the EndpointData.IsLocal() method to check if an EndpointData object (returned by the

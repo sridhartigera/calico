@@ -128,62 +128,62 @@ const (
 type RuleAction byte
 
 const (
-        // We define these with specific byte values as we write this value directly into the NFLOG
-        // prefix.
-        RuleActionAllow RuleAction = 'A'
-        RuleActionDeny  RuleAction = 'D'
-        // Pass onto the next tier
-        RuleActionPass RuleAction = 'P'
+	// We define these with specific byte values as we write this value directly into the NFLOG
+	// prefix.
+	RuleActionAllow RuleAction = 'A'
+	RuleActionDeny  RuleAction = 'D'
+	// Pass onto the next tier
+	RuleActionPass RuleAction = 'P'
 )
 
 func (r RuleAction) String() string {
-        switch r {
-        case RuleActionAllow:
-                return "Allow"
-        case RuleActionDeny:
-                return "Deny"
-        case RuleActionPass:
-                return "Pass"
-        }
-        return ""
+	switch r {
+	case RuleActionAllow:
+		return "Allow"
+	case RuleActionDeny:
+		return "Deny"
+	case RuleActionPass:
+		return "Pass"
+	}
+	return ""
 }
 
 type RuleDir byte
 
 const (
-        // We define these with specific byte values as we write this value directly into the NFLOG
-        // prefix.
-        RuleDirIngress RuleDir = 'I'
-        RuleDirEgress  RuleDir = 'E'
+	// We define these with specific byte values as we write this value directly into the NFLOG
+	// prefix.
+	RuleDirIngress RuleDir = 'I'
+	RuleDirEgress  RuleDir = 'E'
 )
 
 func (r RuleDir) String() string {
-        switch r {
-        case RuleDirIngress:
-                return "Ingress"
-        case RuleDirEgress:
-                return "Egress"
-        }
-        return ""
+	switch r {
+	case RuleDirIngress:
+		return "Ingress"
+	case RuleDirEgress:
+		return "Egress"
+	}
+	return ""
 }
 
 type RuleOwnerType byte
 
 const (
-        // We define these with specific byte values as we write this value directly into the NFLOG
-        // prefix.
-        RuleOwnerTypePolicy  RuleOwnerType = 'P'
-        RuleOwnerTypeProfile RuleOwnerType = 'R'
+	// We define these with specific byte values as we write this value directly into the NFLOG
+	// prefix.
+	RuleOwnerTypePolicy  RuleOwnerType = 'P'
+	RuleOwnerTypeProfile RuleOwnerType = 'R'
 )
 
 func (r RuleOwnerType) String() string {
-        switch r {
-        case RuleOwnerTypePolicy:
-                return "Policy"
-        case RuleOwnerTypeProfile:
-                return "Profile"
-        }
-        return ""
+	switch r {
+	case RuleOwnerTypePolicy:
+		return "Policy"
+	case RuleOwnerTypeProfile:
+		return "Profile"
+	}
+	return ""
 }
 
 // Typedefs to prevent accidentally passing the wrong prefix to the Policy/ProfileChainName()

@@ -42,6 +42,7 @@ import (
 	"github.com/projectcalico/calico/felix/aws"
 	"github.com/projectcalico/calico/felix/bpf"
 	"github.com/projectcalico/calico/felix/bpf/conntrack"
+	"github.com/projectcalico/calico/felix/calc"
 	"github.com/projectcalico/calico/felix/config"
 	extdataplane "github.com/projectcalico/calico/felix/dataplane/external"
 	"github.com/projectcalico/calico/felix/dataplane/inactive"
@@ -54,7 +55,6 @@ import (
 	"github.com/projectcalico/calico/felix/rules"
 	"github.com/projectcalico/calico/felix/wireguard"
 	"github.com/projectcalico/calico/libcalico-go/lib/health"
-	"github.com/projectcalico/calico/felix/calc"
 )
 
 func StartDataplaneDriver(configParams *config.Config,
@@ -339,7 +339,7 @@ func StartDataplaneDriver(configParams *config.Config,
 			RouteSource: configParams.RouteSource,
 
 			KubernetesProvider: configParams.KubernetesProvider(),
-			LookupsCache: lc,
+			LookupsCache:       lc,
 		}
 
 		if configParams.BPFExternalServiceMode == "dsr" {

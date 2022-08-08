@@ -420,7 +420,7 @@ configRetry:
 		configChangedRestartCallback,
 		fatalErrorCallback,
 		k8sClientSet,
-		lookupsCache,)
+		lookupsCache)
 
 	// Initialise the glue logic that connects the calculation graph to/from the dataplane driver.
 	log.Info("Connect to the dataplane driver.")
@@ -560,7 +560,7 @@ configRetry:
 	asyncCalcGraph := calc.NewAsyncCalcGraph(
 		configParams.Copy(), // Copy to avoid concurrent access.
 		calcGraphClientChannels,
-		healthAggregator, lookupsCache,)
+		healthAggregator, lookupsCache)
 
 	if configParams.UsageReportingEnabled {
 		// Usage reporting enabled, add stats collector to graph.  When it detects an update

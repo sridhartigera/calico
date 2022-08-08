@@ -40,14 +40,13 @@ import (
 	"github.com/projectcalico/api/pkg/lib/numorstring"
 
 	"github.com/projectcalico/calico/felix/bpf"
-	"github.com/projectcalico/calico/felix/bpf/counters"
-	"github.com/projectcalico/calico/felix/calc"
 	"github.com/projectcalico/calico/felix/bpf/bpfmap"
 	"github.com/projectcalico/calico/felix/bpf/conntrack"
 	"github.com/projectcalico/calico/felix/bpf/failsafes"
 	bpfipsets "github.com/projectcalico/calico/felix/bpf/ipsets"
 	"github.com/projectcalico/calico/felix/bpf/nat"
 	bpfproxy "github.com/projectcalico/calico/felix/bpf/proxy"
+	"github.com/projectcalico/calico/felix/calc"
 
 	"github.com/projectcalico/calico/felix/bpf/tc"
 	"github.com/projectcalico/calico/felix/config"
@@ -288,7 +287,7 @@ type InternalDataplane struct {
 	managersWithRouteTables []ManagerWithRouteTables
 	managersWithRouteRules  []ManagerWithRouteRules
 	ruleRenderer            rules.RuleRenderer
-	lookupCache *calc.LookupsCache
+	lookupCache             *calc.LookupsCache
 
 	// dataplaneNeedsSync is set if the dataplane is dirty in some way, i.e. we need to
 	// call apply().
@@ -648,7 +647,6 @@ func NewIntDataplaneDriver(config Config) *InternalDataplane {
 		dp.RegisterManager(failsafeMgr)
 
 		config.LookupsCache.EnableID64()
-		counters.SetLookupsCache(config.LookupsCache)
 		workloadIfaceRegex := regexp.MustCompile(strings.Join(interfaceRegexes, "|"))
 		bpfEndpointManager, err = newBPFEndpointManager(
 			nil,

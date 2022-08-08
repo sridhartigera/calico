@@ -22,18 +22,21 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	"context"
 	"fmt"
 	"time"
 
 	api "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	log "github.com/sirupsen/logrus"
-	. "github.com/projectcalico/calico/felix/fv/connectivity"
 
+	"github.com/projectcalico/calico/felix/bpf"
+	"github.com/projectcalico/calico/felix/bpf/polprog"
 	"github.com/projectcalico/calico/felix/fv/infrastructure"
 	"github.com/projectcalico/calico/felix/fv/utils"
 	"github.com/projectcalico/calico/felix/fv/workload"
 	"github.com/projectcalico/calico/libcalico-go/lib/apiconfig"
 	client "github.com/projectcalico/calico/libcalico-go/lib/clientv3"
+	options2 "github.com/projectcalico/calico/libcalico-go/lib/options"
 )
 
 var _ = infrastructure.DatastoreDescribe("_BPF-SAFE_ Felix bpf test policy counters", []apiconfig.DatastoreType{apiconfig.EtcdV3}, func(getInfra infrastructure.InfraFactory) {
@@ -48,7 +51,6 @@ var _ = infrastructure.DatastoreDescribe("_BPF-SAFE_ Felix bpf test policy count
 		felixes      []*infrastructure.Felix
 		calicoClient client.Interface
 		w            [2]*workload.Workload
-		cc                 *Checker
 	)
 
 	BeforeEach(func() {
@@ -62,7 +64,6 @@ var _ = infrastructure.DatastoreDescribe("_BPF-SAFE_ Felix bpf test policy count
 			w[i].WorkloadEndpoint.Labels = map[string]string{"name": w[i].Name}
 			w[i].ConfigureInInfra(infra)
 		}
-		cc = &Checker{CheckSNAT: true,}
 	})
 
 	AfterEach(func() {
@@ -84,18 +85,60 @@ var _ = infrastructure.DatastoreDescribe("_BPF-SAFE_ Felix bpf test policy count
 		return policy
 	}
 
+	updatePolicy := func(policy *api.GlobalNetworkPolicy) *api.GlobalNetworkPolicy {
+		log.WithField("policy", dumpResource(policy)).Info("Updating policy")
+		policy, err := calicoClient.GlobalNetworkPolicies().Update(utils.Ctx, policy, utils.NoOptions)
+		Expect(err).NotTo(HaveOccurred())
+		return policy
+	}
+
 	It("should update rule counters", func() {
 
 		pol := api.NewGlobalNetworkPolicy()
 		pol.Namespace = "fv"
 		pol.Name = "policy-test"
-		//pol.Spec.Selector = w[0].NameSelector()
 		pol.Spec.Selector = "all()"
+		pol.Spec.Ingress = []api.Rule{{Action: "Deny"}}
+		pol.Spec.Egress = []api.Rule{{Action: "Deny"}}
+		pol = createPolicy(pol)
+		time.Sleep(2 * time.Second)
+		for i := 0; i < 10; i++ {
+			_, err := w[1].RunCmd("pktgen", w[1].IP, w[0].IP, "udp", "--port-src", "8055", "--port-dst", "8055")
+			Expect(err).NotTo(HaveOccurred())
+		}
+		m := dumpRuleCounterMap(felixes[0])
+		Expect(len(m)).To(Equal(1))
+		for _, v := range m {
+			Expect(v).To(Equal(uint64(10)))
+		}
+
 		pol.Spec.Ingress = []api.Rule{{Action: "Allow"}}
 		pol.Spec.Egress = []api.Rule{{Action: "Allow"}}
-		pol = createPolicy(pol)
-		cc.ExpectSome(w[1], w[0])
-		cc.CheckConnectivity()
-		time.Sleep(200 * time.Second)
+
+		pol = updatePolicy(pol)
+		time.Sleep(2 * time.Second)
+		for i := 0; i < 10; i++ {
+			_, err := w[1].RunCmd("pktgen", w[1].IP, w[0].IP, "udp", "--port-src", "8055", "--port-dst", "8055")
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		m = dumpRuleCounterMap(felixes[0])
+		Expect(len(m)).To(Equal(2))
+		for _, v := range m {
+			Expect(v).To(Equal(uint64(1)))
+		}
+
+		_, err := calicoClient.GlobalNetworkPolicies().Delete(context.Background(), "policy-test", options2.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		time.Sleep(2 * time.Second)
+		m = dumpRuleCounterMap(felixes[0])
+		Expect(len(m)).To(Equal(0))
 	})
 })
+
+func dumpRuleCounterMap(felix *infrastructure.Felix) polprog.RuleCounterMapMem {
+	rcMap := polprog.RuleCountersMap(&bpf.MapContext{})
+	m := make(polprog.RuleCounterMapMem)
+	dumpBPFMap(felix, rcMap, polprog.MapMemIter(m))
+	return m
+}

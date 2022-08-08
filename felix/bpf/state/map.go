@@ -23,12 +23,13 @@ import (
 )
 
 type PolicyResult int32
+
 const (
 	PolicyNoMatch PolicyResult = iota
 	PolicyAllow
 	PolicyDeny
 	PolicyTailCallFailed = 10
-	MaxRuleIDs = 32
+	MaxRuleIDs           = 32
 )
 
 // struct cali_tc_state {

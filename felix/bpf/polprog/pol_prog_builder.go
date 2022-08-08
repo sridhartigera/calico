@@ -103,10 +103,10 @@ var (
 	stateOffIPProto        int16 = stateEventHdrSize + 32
 	stateOffFlags          int16 = stateEventHdrSize + 33
 
-        stateOffIPSize         int16 = stateEventHdrSize + 34
+	stateOffIPSize int16 = stateEventHdrSize + 34
 
-        stateOffRulesHit int16 = stateEventHdrSize + 36
-        stateOffRuleIDs  int16 = stateEventHdrSize + 40
+	stateOffRulesHit int16 = stateEventHdrSize + 36
+	stateOffRuleIDs  int16 = stateEventHdrSize + 40
 
 	// Compile-time check that IPSetEntrySize hasn't changed; if it changes, the code will need to change.
 	_ = [1]struct{}{{}}[20-ipsets.IPSetEntrySize]
@@ -132,8 +132,8 @@ type Rule struct {
 }
 
 type Policy struct {
-	Name  string
-	Rules []Rule
+	Name      string
+	Rules     []Rule
 	NoMatchID RuleMatchID
 }
 
@@ -160,8 +160,8 @@ type Rules struct {
 	SuppressNormalHostPolicy bool
 
 	// Workload policy.
-	Tiers    []Tier
-	Profiles []Profile
+	Tiers            []Tier
+	Profiles         []Profile
 	NoProfileMatchID RuleMatchID
 
 	// Host endpoint policy.
@@ -356,32 +356,30 @@ func (p *Builder) writeProgramFooter(forXDP bool) {
 }
 
 func (p *Builder) writeRecordRuleID(id RuleMatchID, skipLabel string) {
-        // Load the hit count
-        p.b.Load8(R1, R9, stateOffRulesHit)
+	// Load the hit count
+	p.b.Load8(R1, R9, stateOffRulesHit)
 
-        // Make sure we do not hit too many rules, if so skip to action without
-        // recording the rule ID
-        p.b.JumpGEImm64(R1, state.MaxRuleIDs, skipLabel)
+	// Make sure we do not hit too many rules, if so skip to action without
+	// recording the rule ID
+	p.b.JumpGEImm64(R1, state.MaxRuleIDs, skipLabel)
 
-        // Increment the hit count
-        p.b.Mov64(R2, R1)
-        p.b.AddImm64(R2, 1)
-        // Store the new count
-        p.b.Store8(R9, R2, stateOffRulesHit)
+	// Increment the hit count
+	p.b.Mov64(R2, R1)
+	p.b.AddImm64(R2, 1)
+	// Store the new count
+	p.b.Store8(R9, R2, stateOffRulesHit)
 
-        // Store the rule ID in the rule ids array
-        p.b.ShiftLImm64(R1, 3) // x8
-        p.b.AddImm64(R1, int32(stateOffRuleIDs))
-        p.b.LoadImm64(R2, int64(id))
-        p.b.Add64(R1, R9)
-        p.b.Store64(R1, R2, 0)
+	// Store the rule ID in the rule ids array
+	p.b.ShiftLImm64(R1, 3) // x8
+	p.b.AddImm64(R1, int32(stateOffRuleIDs))
+	p.b.LoadImm64(R2, int64(id))
+	p.b.Add64(R1, R9)
+	p.b.Store64(R1, R2, 0)
 }
 
 func (p *Builder) writeRecordRuleHit(r Rule, skipLabel string) {
-        log.Infof("Sridhar Hit rule ID 0x%x", r.MatchID)
-        p.writeRecordRuleID(r.MatchID, skipLabel)
+	p.writeRecordRuleID(r.MatchID, skipLabel)
 }
-
 
 func (p *Builder) setUpIPSetKey(ipsetID uint64, keyOffset, ipOffset, portOffset int16) {
 	// TODO track whether we've already done an initialisation and skip the parts that don't change.
@@ -455,6 +453,7 @@ func (p *Builder) writePolicyRules(policy Policy, actionLabels map[string]string
 	for ruleIdx, rule := range policy.Rules {
 		log.Debugf("Start of rule %d", ruleIdx)
 		p.b.AddComment(fmt.Sprintf("Start of rule %s", rule))
+		p.b.AddComment(fmt.Sprintf("Rule MatchID: 0x%x", rule.MatchID))
 		action := strings.ToLower(rule.Action)
 		if action == "log" {
 			log.Debug("Skipping log rule.  Not supported in BPF mode.")

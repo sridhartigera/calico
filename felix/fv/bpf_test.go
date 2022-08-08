@@ -3458,7 +3458,11 @@ func dumpBPFMap(felix *infrastructure.Felix, m bpf.Map, iter bpf.IterCallback) {
 	log.WithField("cmd", cmd).Debug("dumpBPFMap")
 	out, err := felix.ExecOutput(cmd...)
 	Expect(err).NotTo(HaveOccurred(), "Failed to get dump BPF map: "+m.Path())
-	err = bpf.IterMapCmdOutput([]byte(out), iter)
+	if strings.Contains(m.(*bpf.PinnedMap).Type, "percpu") {
+		err = bpf.IterPerCpuMapCmdOutput([]byte(out), iter)
+	} else {
+		err = bpf.IterMapCmdOutput([]byte(out), iter)
+	}
 	Expect(err).NotTo(HaveOccurred(), "Failed to parse BPF map dump: "+m.Path())
 }
 

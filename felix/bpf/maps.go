@@ -123,6 +123,7 @@ type MapContext struct {
 	SrMsgMap         Map
 	CtNatsMap        Map
 	IfStateMap       Map
+	RuleCountersMap  Map
 	MapSizes         map[string]uint32
 }
 
@@ -246,6 +247,32 @@ func MapDeleteKeyCmd(m Map, key []byte) ([]string, error) {
 	}
 
 	return nil, errors.Errorf("unrecognized map type %T", m)
+}
+
+//IterPerCpuMapCmdOutput iterates over the output of the dump of per-cpu map
+func IterPerCpuMapCmdOutput(output []byte, f IterCallback) error {
+	var mp perCpuMapEntry
+	var v []byte
+	err := json.Unmarshal(output, &mp)
+	if err != nil {
+		return errors.Errorf("cannot parse json output: %v\n%s", err, output)
+	}
+
+	for _, me := range mp {
+		k, err := hexStringsToBytes(me.Key)
+		if err != nil {
+			return errors.Errorf("failed parsing entry %s key: %e", me, err)
+		}
+		for _, value := range me.Values {
+			perCpuVal, err := hexStringsToBytes(value.Value)
+			if err != nil {
+				return errors.Errorf("failed parsing entry %s val: %e", me, err)
+			}
+			v = append(v, perCpuVal...)
+		}
+		f(k, v)
+	}
+	return nil
 }
 
 // IterMapCmdOutput iterates over the output of a command obtained by DumpMapCmd
