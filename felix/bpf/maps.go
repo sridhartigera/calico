@@ -302,7 +302,11 @@ func IterMapCmdOutput(output []byte, f IterCallback) error {
 // The key and value are owned by the iterator and will be clobbered by the next iteration so they must not be
 // retained or modified.
 func (b *PinnedMap) Iter(f IterCallback) error {
-	it, err := NewMapIterator(b.MapFD(), b.KeySize, b.ValueSize, b.MaxEntries)
+	valueSize := b.ValueSize
+        if b.perCPU {
+                valueSize = b.ValueSize * NumPossibleCPUs()
+	}
+	it, err := NewMapIterator(b.MapFD(), b.KeySize, valueSize, b.MaxEntries)
 	if err != nil {
 		return fmt.Errorf("failed to create BPF map iterator: %w", err)
 	}

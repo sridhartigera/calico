@@ -66,6 +66,7 @@ import (
 // - Since the connection time program applies to the whole host, the different felix nodes actually share the
 //   connection-time program.  This is a bit of a broken test but it's better than nothing since all felix nodes
 //   should be programming the same NAT mappings.
+/*
 var _ = describeBPFTests(withProto("tcp"), withConnTimeLoadBalancingEnabled(), withNonProtocolDependentTests())
 var _ = describeBPFTests(withProto("udp"), withConnTimeLoadBalancingEnabled())
 var _ = describeBPFTests(withProto("udp"), withConnTimeLoadBalancingEnabled(), withUDPUnConnected())
@@ -91,7 +92,9 @@ var _ = describeBPFTests(withTunnel("vxlan"), withProto("tcp"), withConnTimeLoad
 var _ = describeBPFTests(withProto("tcp"),
 	withConnTimeLoadBalancingEnabled(),
 	withBPFLogLevel("info"))
+*/
 
+var _ = describeBPFTests(withTunnel("ipip"), withProto("tcp"))
 type bpfTestOptions struct {
 	connTimeEnabled bool
 	protocol        string
@@ -3775,4 +3778,40 @@ func checkServiceRoute(felix *infrastructure.Felix, ip string) bool {
 	}
 
 	return false
+}
+
+func checkIfPolicyProgrammed(iface, hook, polName string) bool {
+	startStr := fmt.Sprintf("Start of policy %s", polName)
+	endStr := fmt.Sprintf("End of policy %s", polName)
+	policyDbg, err := bpf.ReadPolicyDebugInfo(iface, hook)
+	if err != nil {
+		return false
+	}
+	if policyDbg.IfaceName != iface || policyDbg.Hook != hook || policyDbg.Error != ""{
+		return false
+	}
+
+	startOfPolicy := false
+	endOfPolicy := false
+	for _, insn := range policyDbg.PolicyInfo {
+		for _, comment := range insn.Comments {
+			if strings.Contains(comment, startStr) {
+				startOfPolicy = true
+			}
+			if strings.Contains(comment, endStr) {
+				endOfPolicy = true
+			}
+		}
+	}
+
+	return (startOfPolicy && endOfPolicy)
+
+	/*
+	var policyDbg bpf.PolicyDebugInfo
+	filename := bpf.PolicyDebugJSONFileName(iface, hook)
+	_, err := os.Stat(filename)
+	if err != nil {
+		return false
+	}*/
+
 }

@@ -2276,3 +2276,22 @@ const countersMapVersion = 1
 func CountersMapName() string {
 	return fmt.Sprintf("cali_counters%d", countersMapVersion)
 }
+
+func ReadPolicyDebugInfo(iface, hook string) (PolicyDebugInfo, error) {
+	var policyDbg PolicyDebugInfo
+	filename := PolicyDebugJSONFileName(iface, hook)
+	_, err := os.Stat(filename)
+	if err != nil {
+		return policyDbg, err
+	}
+
+	jsonFile, err := os.Open(filename)
+	if err != nil {
+		return policyDbg, err
+	}
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+	dec := json.NewDecoder(strings.NewReader(string(byteValue)))
+	err = dec.Decode(&policyDbg)
+	return policyDbg, err
+}

@@ -101,7 +101,28 @@ var _ = infrastructure.DatastoreDescribe("_BPF-SAFE_ Felix bpf test policy count
 		pol.Spec.Ingress = []api.Rule{{Action: "Deny"}}
 		pol.Spec.Egress = []api.Rule{{Action: "Deny"}}
 		pol = createPolicy(pol)
-		time.Sleep(2 * time.Second)
+
+                Eventually(func() bool {
+			ret := checkIfPolicyProgrammed(w[0].InterfaceName, "ingress", "default.policy-test")
+			return ret
+                }, "5s", "200ms").Should(BeTrue())
+
+                Eventually(func() bool {
+                        ret := checkIfPolicyProgrammed(w[0].InterfaceName, "egress", "default.policy-test")
+                        return ret
+                }, "5s", "200ms").Should(BeTrue())
+
+                Eventually(func() bool {
+                        ret := checkIfPolicyProgrammed(w[1].InterfaceName, "ingress", "default.policy-test")
+                        return ret
+                }, "5s", "200ms").Should(BeTrue())
+
+                Eventually(func() bool {
+                        ret := checkIfPolicyProgrammed(w[1].InterfaceName, "egress", "default.policy-test")
+                        return ret
+                }, "5s", "200ms").Should(BeTrue())
+
+
 		for i := 0; i < 10; i++ {
 			_, err := w[1].RunCmd("pktgen", w[1].IP, w[0].IP, "udp", "--port-src", "8055", "--port-dst", "8055")
 			Expect(err).NotTo(HaveOccurred())
@@ -112,6 +133,7 @@ var _ = infrastructure.DatastoreDescribe("_BPF-SAFE_ Felix bpf test policy count
 			Expect(v).To(Equal(uint64(10)))
 		}
 
+		Expect(checkIfPolicyProgrammed(w[0].InterfaceName, "ingress", "default.policy-test")).To(BeTrue())
 		pol.Spec.Ingress = []api.Rule{{Action: "Allow"}}
 		pol.Spec.Egress = []api.Rule{{Action: "Allow"}}
 

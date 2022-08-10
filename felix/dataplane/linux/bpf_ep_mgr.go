@@ -35,6 +35,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"hash/fnv"
 
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
@@ -1154,7 +1155,6 @@ func (m *bpfEndpointManager) attachDataIfaceProgram(ifaceName string, ep *proto.
 	if ep != nil {
 		rules := polprog.Rules{
 			ForHostInterface: true,
-			NoProfileMatchID: m.profileNoMatchID(polDirection.RuleDir()),
 		}
 		m.addHostPolicy(&rules, ep, polDirection)
 		insns, err := m.dp.updatePolicyProgram(jumpMapFD, rules)
@@ -1382,7 +1382,6 @@ func (m *bpfEndpointManager) extractProfiles(profileNames []string, direction Po
 
 func (m *bpfEndpointManager) extractRules(tier *proto.TierInfo, profileNames []string, direction PolDirection) polprog.Rules {
 	var r polprog.Rules
-	dir := direction.RuleDir()
 
 	// When there is applicable normal policy that does not explicitly Allow or Deny traffic,
 	// traffic is dropped.
@@ -1390,33 +1389,12 @@ func (m *bpfEndpointManager) extractRules(tier *proto.TierInfo, profileNames []s
 
 	r.Profiles = m.extractProfiles(profileNames, direction)
 
-	r.NoProfileMatchID = m.profileNoMatchID(dir)
 	return r
 }
 func strToByte64(s string) [64]byte {
 	var bytes [64]byte
 	copy(bytes[:], []byte(s))
 	return bytes
-}
-
-func (m *bpfEndpointManager) ruleMatchIDFromNFLOGPrefix(nflogPrefix string) polprog.RuleMatchID {
-	return m.lookupsCache.GetID64FromNFLOGPrefix(strToByte64(nflogPrefix))
-}
-
-func (m *bpfEndpointManager) endOfTierPassID(dir rules.RuleDir, tier string) polprog.RuleMatchID {
-	return m.ruleMatchIDFromNFLOGPrefix(rules.CalculateEndOfTierPassNFLOGPrefixStr(dir, tier))
-}
-
-func (m *bpfEndpointManager) endOfTierDropID(dir rules.RuleDir, tier string) polprog.RuleMatchID {
-	return m.ruleMatchIDFromNFLOGPrefix(rules.CalculateEndOfTierDropNFLOGPrefixStr(dir, tier))
-}
-
-func (m *bpfEndpointManager) policyNoMatchID(dir rules.RuleDir, policy string) polprog.RuleMatchID {
-	return m.ruleMatchIDFromNFLOGPrefix(rules.CalculateNoMatchPolicyNFLOGPrefixStr(dir, policy))
-}
-
-func (m *bpfEndpointManager) profileNoMatchID(dir rules.RuleDir) polprog.RuleMatchID {
-	return m.ruleMatchIDFromNFLOGPrefix(rules.CalculateNoMatchProfileNFLOGPrefixStr(dir))
 }
 
 func (m *bpfEndpointManager) ruleMatchID(
@@ -1442,7 +1420,8 @@ func (m *bpfEndpointManager) ruleMatchID(
 		log.WithField("action", action).Panic("Unknown rule action")
 	}
 
-	return m.ruleMatchIDFromNFLOGPrefix(rules.CalculateNFLOGPrefixStr(a, owner, dir, idx, name))
+	str := a.String() + owner.String() + dir.String() + strconv.Itoa(idx) + name
+	return hash(str)
 }
 
 func (m *bpfEndpointManager) isWorkloadIface(iface string) bool {
@@ -2189,4 +2168,10 @@ func (m *bpfEndpointManager) addRuleInfo(rule *proto.Rule, idx int, owner rules.
 	m.ruleIdToMatchID[rule.RuleId] = m.ruleMatchID(direction.RuleDir(), rule.Action, owner, idx, polName)
 	ruleIds.Add(item)
 	return ruleIds
+}
+
+func hash(s string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(s))
+	return h.Sum64()
 }

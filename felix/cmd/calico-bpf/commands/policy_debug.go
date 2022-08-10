@@ -20,8 +20,10 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"strconv"
 
 	"github.com/projectcalico/calico/felix/bpf"
+	"github.com/projectcalico/calico/felix/bpf/polprog"
 	"github.com/projectcalico/calico/felix/bpf/asm"
 
 	log "github.com/sirupsen/logrus"
@@ -83,6 +85,36 @@ func printInsn(cmd *cobra.Command, insn asm.Insn) {
 	cmd.Printf(" %v\n", insn)
 }
 
+func getRuleMatchID(comment string) (uint64, error) {
+	if strings.Contains(comment, "Rule MatchID") {
+		matchID := strings.Split(comment, "Rule MatchID:")[1]
+		matchID = strings.Trim(matchID, " ")
+		matchID = strings.Replace(matchID, "0x","", -1)
+		id, err := strconv.ParseUint(matchID, 16, 64)
+		if err != nil {
+			return 0, err
+		}
+		return id, nil
+	}
+	return 0, nil
+}
+
+func getRuleCounter(comment string) (uint64, error) {
+	matchId, err := getRuleMatchID(comment)
+	if err != nil {
+		return 0, err
+	}
+	rmap := polprog.RuleCountersMap(&bpf.MapContext{})
+	m, err := polprog.LoadMap(rmap)
+	if err != nil {
+		return 0, err
+	}
+	if val, ok := m[matchId]; ok {
+		return val, nil
+	}
+	return 0, err
+}
+
 func dumpPolicyInfo(cmd *cobra.Command, iface, hook string) error {
 	var policyDbg bpf.PolicyDebugInfo
 	filename := bpf.PolicyDebugJSONFileName(iface, hook)
@@ -102,6 +134,7 @@ func dumpPolicyInfo(cmd *cobra.Command, iface, hook string) error {
 	if err != nil {
 		return err
 	}
+	
 	cmd.Printf("IfaceName: %s\n", policyDbg.IfaceName)
 	cmd.Printf("Hook: %s\n", policyDbg.Hook)
 	cmd.Println("Policy Info:")
@@ -110,7 +143,15 @@ func dumpPolicyInfo(cmd *cobra.Command, iface, hook string) error {
 			cmd.Printf("%s:\n", label)
 		}
 		for _, comment := range insn.Comments {
-			cmd.Printf("      // %s\n", comment)
+			if strings.Contains(comment, "Rule MatchID") {
+				count, err := getRuleCounter(comment)
+				if err == nil {
+					cmd.Printf("      // count = %d\n", count)
+				}
+
+			} else {
+				cmd.Printf("      // %s\n", comment)
+			}
 		}
 		printInsn(cmd, insn)
 	}
