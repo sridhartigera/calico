@@ -27,6 +27,7 @@ import (
 	"github.com/projectcalico/calico/libcalico-go/lib/clientv3"
 	"github.com/projectcalico/calico/libcalico-go/lib/errors"
 	"github.com/projectcalico/calico/libcalico-go/lib/options"
+	"github.com/projectcalico/calico/libcalico-go/lib/backend/k8s/resources"
 	calicowatch "github.com/projectcalico/calico/libcalico-go/lib/watch"
 )
 
@@ -188,7 +189,7 @@ func checkPreconditions(key string, preconditions *storage.Preconditions, out ru
 	if err != nil {
 		return storage.NewInternalErrorf("can't enforce preconditions %v on un-introspectable object %v, got error: %v", *preconditions, out, err)
 	}
-	if preconditions.UID != nil && *preconditions.UID != objMeta.GetUID() {
+	if preconditions.UID != nil && *preconditions.UID != resources.ReverseUID(objMeta.GetUID()) {
 		errMsg := fmt.Sprintf("Precondition failed: UID in precondition: %v, UID in object meta: %v", *preconditions.UID, objMeta.GetUID())
 		return storage.NewInvalidObjError(key, errMsg)
 	}
