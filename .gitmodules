@@ -1,0 +1,3 @@
+[submodule "felix/bpf-gpl/include/libbpf"]
+	path = felix/bpf-gpl/include/libbpf
+	url = https://github.com/libbpf/libbpf.git
