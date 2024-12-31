@@ -17,6 +17,10 @@ static CALI_BPF_INLINE int icmp_v6_reply(struct cali_tc_ctx *ctx,
 		CALI_DEBUG("ICMP v4 reply: too short");
 		return -1;
 	}
+        __u16 protocol = bpf_ntohs(eth_hdr(ctx)->h_proto);
+        if (protocol == 0x8100) {
+                ctx->ip_hdr_offset += sizeof(struct vlanhdr);
+        }
 
 	ipv6_addr_t orig_src;
 	ipv6hdr_ip_to_ipv6_addr_t(&orig_src, &ip_hdr(ctx)->saddr);

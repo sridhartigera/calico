@@ -1840,6 +1840,7 @@ int calico_tc_skb_send_icmp_replies(struct __sk_buff *skb)
 			.res = TC_ACT_UNSPEC,
 			.reason = CALI_REASON_UNKNOWN,
 		},
+		.ip_hdr_offset = sizeof(struct ethhdr),
 	);
 	struct cali_tc_ctx *ctx = &_ctx;
 

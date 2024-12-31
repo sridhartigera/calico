@@ -18,16 +18,24 @@ static CALI_BPF_INLINE int parse_packet_ip_v6(struct cali_tc_ctx *ctx) {
 	 * an initial decision based on Ethernet protocol before parsing packet
 	 * for more headers.
 	 */
-#if CALI_F_XDP
-	if (skb_refresh_validate_ptrs(ctx, UDP_SIZE)) {
-		deny_reason(ctx, CALI_REASON_SHORT);
-		CALI_DEBUG("Too short");
-		goto deny;
-	}
-	protocol = bpf_ntohs(eth_hdr(ctx)->h_proto);
-#else
-	protocol = bpf_ntohs(ctx->skb->protocol);
-#endif
+//#if CALI_F_XDP
+        ctx->ip_hdr_offset = sizeof(struct ethhdr);
+        if (skb_refresh_validate_ptrs(ctx, UDP_SIZE)) {
+                deny_reason(ctx, CALI_REASON_SHORT);
+                CALI_DEBUG("Too short");
+                goto deny;
+        }
+        protocol = bpf_ntohs(eth_hdr(ctx)->h_proto);
+        CALI_LOG("parse_packet_ip_v4 protocol is proto 0x%x", protocol);
+        if (protocol == 0x8100) {
+                CALI_LOG("parse_packet_ip_v4 protocol is vlan");
+                protocol = bpf_ntohs(vlan_hdr(ctx)->h_vlan_encapsulated_proto);
+                CALI_LOG("parse_packet_ip_v4 protocol in vlan = 0x%x", protocol);
+                ctx->ip_hdr_offset += sizeof(struct vlanhdr);
+        }
+//#else
+//	protocol = bpf_ntohs(ctx->skb->protocol);
+//#endif
 
 	switch (protocol) {
 	case ETH_P_IPV6:

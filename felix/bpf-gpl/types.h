@@ -163,6 +163,11 @@ struct fwd {
 #endif
 };
 
+struct vlanhdr {
+        __be16  h_vlan_TCI;
+        __be16  h_vlan_encapsulated_proto;
+};
+
 struct cali_tc_ctx {
 #if !CALI_F_XDP
   struct __sk_buff *skb;
@@ -176,6 +181,7 @@ struct cali_tc_ctx {
   void *ip_header;
   long ipheader_len;
   void *nh;
+  long ip_hdr_offset;
 
   struct cali_tc_state *state;
 #if !CALI_F_XDP
@@ -266,6 +272,12 @@ static CALI_BPF_INLINE struct icmphdr* icmp_hdr(struct cali_tc_ctx *ctx)
 static CALI_BPF_INLINE struct ethhdr* eth_hdr(struct cali_tc_ctx *ctx)
 {
 	return (struct ethhdr *)ctx->data_start;
+}
+
+static CALI_BPF_INLINE struct vlanhdr* vlan_hdr(struct cali_tc_ctx *ctx)
+{
+	struct ethhdr *eth = (struct ethhdr *)ctx->data_start;
+	return (void *)eth + 1;
 }
 
 static CALI_BPF_INLINE struct tcphdr* tcp_hdr(struct cali_tc_ctx *ctx)

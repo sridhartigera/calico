@@ -20,11 +20,18 @@ static CALI_BPF_INLINE __u16 parse_eth_hdr(struct xdp_md *xdp)
 {
 	void *data_end = (void *)(long)xdp->data_end;
 	struct ethhdr *eth = (void *)(long)xdp->data;
-	__u64 offset = sizeof(*eth);
+	struct vlanhdr *vlan;
+	__u64 offset = sizeof(*eth) + sizeof(*vlan);
 	if ((void *)eth + offset > data_end) {
 		bpf_exit(XDP_DROP);
 	}
-	return bpf_ntohs(eth->h_proto);
+	__u16 proto = bpf_ntohs(eth->h_proto);
+	if (proto == 0x8100) {
+		vlan = (void *)(eth + 1);
+		proto = bpf_ntohs(vlan->h_vlan_encapsulated_proto);
+	}
+	CALI_LOG("XDP preamble proto = 0x%x", proto);
+	return proto;
 }
 
 SEC("xdp")

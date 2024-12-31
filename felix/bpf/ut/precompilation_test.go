@@ -67,6 +67,8 @@ func TestPrecompiledBinariesAreLoadable(t *testing.T) {
 
 	objects["tc_preamble.o"] = struct{}{}
 	objects["xdp_preamble.o"] = struct{}{}
+	objects["xdp_no_log.o"] = struct{}{}
+	objects["xdp_debug.o"] = struct{}{}
 	objects["conntrack_cleanup_debug_co-re_v4.o"] = struct{}{}
 	objects["conntrack_cleanup_debug_co-re_v6.o"] = struct{}{}
 	objects["conntrack_cleanup_no_log_co-re_v4.o"] = struct{}{}

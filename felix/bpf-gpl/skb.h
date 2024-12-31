@@ -78,7 +78,11 @@ static CALI_BPF_INLINE long skb_iphdr_offset(struct cali_tc_ctx *ctx)
 		return 0;
 	} else {
 		// Normal L2 interface: skb is [ether|IP|payload]
-		return sizeof(struct ethhdr);
+//#if CALI_F_XDP
+		return ctx->ip_hdr_offset;
+//#else
+//		return sizeof(struct ethhdr);
+//#endif
 	}
 }
 
