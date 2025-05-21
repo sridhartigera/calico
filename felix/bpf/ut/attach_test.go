@@ -774,8 +774,8 @@ func TestAttachWithMultipleWorkloadUpdate(t *testing.T) {
 
 }
 
-// This test verifies that we use the same tc priority but toggle between
-// handles when repeatedly attaching the preamble program.
+// This test verifies if the tc program gets replaced
+// and thus returns the same handle and priority.
 func TestRepeatedAttach(t *testing.T) {
 	RegisterTestingT(t)
 
@@ -808,11 +808,7 @@ func TestRepeatedAttach(t *testing.T) {
 		tcRes, ok = res.(tc.AttachResult)
 		Expect(ok).To(BeTrue())
 		Expect(tcRes.Prio()).To(Equal(prio))
-		if i%2 == 0 {
-			Expect(tcRes.Handle()).To(Equal(handle + 1))
-		} else {
-			Expect(tcRes.Handle()).To(Equal(handle))
-		}
+		Expect(tcRes.Handle()).To(Equal(handle))
 	}
 	// We have a BPF program attached to ingress hook and nothing on the egress hook.
 	// Now when there is a workload update, ingress program must be replaced and new program
