@@ -49,6 +49,7 @@ var (
 	runBPF                     = flagSet.Bool("bpf", false, "Run BPF debug tool")
 	runInit                    = flagSet.Bool("init", false, "Do privileged initialisation of a new node (mount file systems etc).")
 	bestEffort                 = flagSet.Bool("best-effort", false, "Used in combination with the init flag. Report errors but do not fail if an error occurs during initialisation.")
+	skipCgroup                 = flagSet.Bool("skip-cgroup", false, "Used in combination with the init flag. Skips mounting cgroup")
 	runStartup                 = flagSet.Bool("startup", false, "Do non-privileged start-up routine.")
 	runShutdown                = flagSet.Bool("shutdown", false, "Do shutdown routine.")
 	monitorAddrs               = flagSet.Bool("monitor-addresses", false, "Monitor change in node IP addresses")
@@ -146,7 +147,7 @@ func main() {
 		if *bestEffort {
 			logrus.SetFormatter(&logutils.Formatter{Component: "init-best-effort"})
 		}
-		nodeinit.Run(*bestEffort)
+		nodeinit.Run(*bestEffort, *skipCgroup)
 	} else if *runStartup {
 		logrus.SetFormatter(&logutils.Formatter{Component: "startup"})
 		startup.Run()
