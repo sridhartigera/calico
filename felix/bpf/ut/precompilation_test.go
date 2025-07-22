@@ -66,10 +66,6 @@ func TestPrecompiledBinariesAreLoadable(t *testing.T) {
 
 	objects["tc_preamble.o"] = struct{}{}
 	objects["xdp_preamble.o"] = struct{}{}
-	objects["conntrack_cleanup_debug_co-re_v4.o"] = struct{}{}
-	objects["conntrack_cleanup_debug_co-re_v6.o"] = struct{}{}
-	objects["conntrack_cleanup_no_log_co-re_v4.o"] = struct{}{}
-	objects["conntrack_cleanup_no_log_co-re_v6.o"] = struct{}{}
 	for _, logLevel := range []string{"debug", "no_log"} {
 		for _, btf := range []bool{false, true} {
 			for _, ipv := range []string{"v46", "v4", "v6"} {

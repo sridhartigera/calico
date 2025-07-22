@@ -18,6 +18,9 @@
 #define IPPROTO_ICMP_46	IPPROTO_ICMP
 #endif
 
+#ifndef UNITTEST
+#include "conntrack_cleanup.h"
+#endif
 // Connection tracking.
 
 #define PSNAT_RETRIES	3
@@ -661,7 +664,16 @@ static CALI_BPF_INLINE struct calico_ct_result calico_ct_lookup(struct cali_tc_c
 	fill_ct_key(&k, srcLTDest, ct_ctx->proto, &ct_ctx->src, &ct_ctx->dst, ct_ctx->sport, ct_ctx->dport);
 
 	struct calico_ct_value *v = cali_ct_lookup_elem(&k);
-	if (!v) {
+	bool expired = false;
+
+#ifndef UNITTEST
+	if (v && entry_expired(&k, v)) {
+		cali_ct_delete_elem(&k);
+		expired = true;
+	}
+#endif
+
+	if (!v || expired) {
 		if (syn) {
 			// SYN packet (new flow); send it to policy.
 			CALI_CT_DEBUG("Miss for TCP SYN, NEW flow.");
