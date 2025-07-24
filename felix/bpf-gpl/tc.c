@@ -19,9 +19,7 @@
 
 #include "bpf.h"
 
-#ifndef UNITTEST
 const volatile struct cali_ct_cleanup_globals __ct_globals;
-#endif
 
 #define CALI_IFACE_LOG(fmt, ...) bpf_log("%s" fmt, ctx->globals->data.iface_name, ## __VA_ARGS__)
 

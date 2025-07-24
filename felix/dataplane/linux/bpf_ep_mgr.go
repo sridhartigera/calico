@@ -54,6 +54,7 @@ import (
 	"github.com/projectcalico/calico/felix/bpf/asm"
 	"github.com/projectcalico/calico/felix/bpf/bpfdefs"
 	"github.com/projectcalico/calico/felix/bpf/bpfmap"
+	"github.com/projectcalico/calico/felix/bpf/conntrack/timeouts"
 	"github.com/projectcalico/calico/felix/bpf/counters"
 	"github.com/projectcalico/calico/felix/bpf/filter"
 	"github.com/projectcalico/calico/felix/bpf/hook"
@@ -368,9 +369,11 @@ type bpfEndpointManager struct {
 	// Service routes
 	hostNetworkedNATMode hostNetworkedNATMode
 
-	bpfPolicyDebugEnabled  bool
-	bpfRedirectToPeer      string
-	bpfAttachType          string
+	bpfPolicyDebugEnabled bool
+	bpfRedirectToPeer     string
+	bpfAttachType         string
+
+	conntrackTimeouts      timeouts.Timeouts
 	policyTrampolineStride atomic.Int32
 
 	routeTableV4     *routetable.ClassView
@@ -512,10 +515,11 @@ func NewBPFEndpointManager(
 
 		natOutgoingExclusions: config.RulesConfig.NATOutgoingExclusions,
 
-		healthAggregator: healthAggregator,
-		features:         dataplanefeatures,
-		profiling:        config.BPFProfiling,
-		bpfAttachType:    config.BPFAttachType,
+		healthAggregator:  healthAggregator,
+		features:          dataplanefeatures,
+		profiling:         config.BPFProfiling,
+		bpfAttachType:     config.BPFAttachType,
+		conntrackTimeouts: config.BPFConntrackTimeouts,
 	}
 
 	m.policyTrampolineStride.Store(int32(asm.TrampolineStrideDefault))
@@ -3571,7 +3575,7 @@ func (m *bpfEndpointManager) ensureQdisc(iface string) (bool, error) {
 func (m *bpfEndpointManager) loadTCObj(at hook.AttachType) (hook.Layout, error) {
 	pm := m.commonMaps.ProgramsMap.(*hook.ProgramsMap)
 
-	layout, err := pm.LoadObj(at)
+	layout, err := pm.LoadObj(at, m.conntrackTimeouts)
 	if err != nil {
 		return nil, err
 	}
@@ -3581,7 +3585,7 @@ func (m *bpfEndpointManager) loadTCObj(at hook.AttachType) (hook.Layout, error) 
 	}
 
 	at.LogLevel = "off"
-	layoutNoDebug, err := pm.LoadObj(at)
+	layoutNoDebug, err := pm.LoadObj(at, m.conntrackTimeouts)
 	if err != nil {
 		return nil, err
 	}
@@ -3639,11 +3643,11 @@ func (m *bpfEndpointManager) ensureProgramLoaded(ap attachPoint, ipFamily proto.
 		at.Family = int(ipFamily)
 		pm := m.commonMaps.XDPProgramsMap.(*hook.ProgramsMap)
 		if ipFamily == proto.IPVersion_IPV6 {
-			if apxdp.HookLayoutV6, err = pm.LoadObj(at); err != nil {
+			if apxdp.HookLayoutV6, err = pm.LoadObj(at, m.conntrackTimeouts); err != nil {
 				return fmt.Errorf("loading generic xdp hook program: %w", err)
 			}
 		} else {
-			if apxdp.HookLayoutV4, err = pm.LoadObj(at); err != nil {
+			if apxdp.HookLayoutV4, err = pm.LoadObj(at, m.conntrackTimeouts); err != nil {
 				return fmt.Errorf("loading generic xdp hook program: %w", err)
 			}
 		}

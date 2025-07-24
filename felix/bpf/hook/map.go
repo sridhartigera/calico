@@ -23,6 +23,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/projectcalico/calico/felix/bpf/bpfdefs"
+	"github.com/projectcalico/calico/felix/bpf/conntrack/timeouts"
 	"github.com/projectcalico/calico/felix/bpf/libbpf"
 	"github.com/projectcalico/calico/felix/bpf/maps"
 )
@@ -121,7 +122,7 @@ func NewXDPProgramsMap() maps.Map {
 	}
 }
 
-func (pm *ProgramsMap) LoadObj(at AttachType) (Layout, error) {
+func (pm *ProgramsMap) LoadObj(at AttachType, ctTimeouts timeouts.Timeouts) (Layout, error) {
 	pm.lock.Lock()
 	defer pm.lock.Unlock()
 
@@ -136,18 +137,18 @@ func (pm *ProgramsMap) LoadObj(at AttachType) (Layout, error) {
 		return MergeLayouts(l), nil // MergeLayouts triggers a copy
 	}
 
-	la, err := pm.loadObj(at, path.Join(bpfdefs.ObjectDir, file))
+	la, err := pm.loadObj(at, path.Join(bpfdefs.ObjectDir, file), ctTimeouts)
 	if err != nil && strings.Contains(file, "_co-re") {
 		log.WithError(err).Warn("Failed to load CO-RE object, kernel too old? Falling back to non-CO-RE.")
 		file := strings.ReplaceAll(file, "_co-re", "")
 		objectFiles[at] = file
-		la, err = pm.loadObj(at, path.Join(bpfdefs.ObjectDir, file))
+		la, err = pm.loadObj(at, path.Join(bpfdefs.ObjectDir, file), ctTimeouts)
 	}
 
 	return la, err
 }
 
-func (pm *ProgramsMap) loadObj(at AttachType, file string) (Layout, error) {
+func (pm *ProgramsMap) loadObj(at AttachType, file string, ctTimeouts timeouts.Timeouts) (Layout, error) {
 	obj, err := libbpf.OpenObject(file)
 	if err != nil {
 		return nil, fmt.Errorf("file %s: %w", file, err)
@@ -159,7 +160,21 @@ func (pm *ProgramsMap) loadObj(at AttachType, file string) (Layout, error) {
 			if strings.HasPrefix(mapName, ".rodata") {
 				continue
 			}
-			continue
+			if at.Hook != XDP {
+				ctCleanupData := &libbpf.CTCleanupGlobalData{
+					CreationGracePeriod: ctTimeouts.CreationGracePeriod,
+					TCPSynSent:          ctTimeouts.TCPSynSent,
+					TCPEstablished:      ctTimeouts.TCPEstablished,
+					TCPFinsSeen:         ctTimeouts.TCPFinsSeen,
+					TCPResetSeen:        ctTimeouts.TCPResetSeen,
+					UDPTimeout:          ctTimeouts.UDPTimeout,
+					GenericTimeout:      ctTimeouts.GenericTimeout,
+					ICMPTimeout:         ctTimeouts.ICMPTimeout}
+				if err := ctCleanupData.Set(m); err != nil {
+					return nil, fmt.Errorf("failed to configure %s: %w", file, err)
+				}
+				continue
+			}
 		}
 
 		if err := pm.setMapSize(m); err != nil {

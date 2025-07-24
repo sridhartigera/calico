@@ -41,6 +41,7 @@ import (
 	"github.com/projectcalico/calico/felix/bpf"
 	"github.com/projectcalico/calico/felix/bpf/arp"
 	"github.com/projectcalico/calico/felix/bpf/conntrack"
+	"github.com/projectcalico/calico/felix/bpf/conntrack/timeouts"
 	"github.com/projectcalico/calico/felix/bpf/counters"
 	"github.com/projectcalico/calico/felix/bpf/failsafes"
 	"github.com/projectcalico/calico/felix/bpf/hook"
@@ -749,95 +750,78 @@ func objLoad(fname, bpfFsDir, ipFamily string, topts testOpts, polProg, hasHostC
 	err = policyJumpMapXDP.EnsureExists()
 	Expect(err).NotTo(HaveOccurred())
 
-	obj, err := libbpf.OpenObject(fname)
-	if err != nil {
-		return nil, fmt.Errorf("open object %s: %w", fname, err)
-	}
-
-	for m, err := obj.FirstMap(); m != nil && err == nil; m, err = m.NextMap() {
-		if m.IsMapInternal() {
-			if strings.HasPrefix(m.Name(), ".rodata") {
-				continue
+	var data libbpf.GlobalData
+	if forXDP {
+		globals := &libbpf.XDPGlobalData{}
+		for i := 0; i < 16; i++ {
+			globals.Jumps[i] = uint32(i)
+		}
+		if topts.ipv6 {
+			for i := 0; i < 16; i++ {
+				globals.JumpsV6[i] = uint32(i)
 			}
-			if forXDP {
-				var globals libbpf.XDPGlobalData
-				for i := 0; i < 16; i++ {
+		}
+		globals.IfaceName = setLogPrefix(bpfIfaceName)
+		data = globals
+	} else {
+		if strings.Contains(fname, "preamble") {
+			ifaceLog := topts.progLog + "-" + bpfIfaceName
+			globals := &libbpf.TcGlobalData{
+				Tmtu:         natTunnelMTU,
+				VxlanPort:    testVxlanPort,
+				PSNatStart:   uint16(topts.psnaStart),
+				PSNatLen:     uint16(topts.psnatEnd-topts.psnaStart) + 1,
+				Flags:        libbpf.GlobalsNoDSRCidrs,
+				LogFilterJmp: 0xffffffff,
+				IfaceName:    setLogPrefix(ifaceLog),
+			}
+			if topts.flowLogsEnabled {
+				globals.Flags |= libbpf.GlobalsFlowLogsEnabled
+			}
+			if topts.natOutExcludeHosts {
+				globals.Flags |= libbpf.GlobalsNATOutgoingExcludeHosts
+			}
+			if topts.ipv6 {
+				copy(globals.HostTunnelIPv6[:], node1tunIPV6.To16())
+				copy(globals.HostIPv6[:], hostIP.To16())
+				copy(globals.IntfIPv6[:], intfIPV6.To16())
+
+				for i := 0; i < tcdefs.ProgIndexEnd; i++ {
+					globals.JumpsV6[i] = uint32(i)
+				}
+				globals.Flags |= libbpf.GlobalsRPFOptionStrict
+				log.WithField("globals", globals).Debugf("configure program v6")
+			} else {
+				copy(globals.HostIPv4[0:4], hostIP)
+				copy(globals.IntfIPv4[0:4], intfIP)
+				copy(globals.HostTunnelIPv4[0:4], node1tunIP.To4())
+
+				for i := 0; i < tcdefs.ProgIndexEnd; i++ {
 					globals.Jumps[i] = uint32(i)
 				}
-				if topts.ipv6 {
-					for i := 0; i < 16; i++ {
-						globals.JumpsV6[i] = uint32(i)
-					}
-				}
-
-				globals.IfaceName = setLogPrefix(bpfIfaceName)
-				if err := globals.Set(m); err != nil {
-					return nil, fmt.Errorf("failed to configure xdp program: %w", err)
-				}
-			} else {
-				ifaceLog := topts.progLog + "-" + bpfIfaceName
-				globals := libbpf.TcGlobalData{
-					Tmtu:         natTunnelMTU,
-					VxlanPort:    testVxlanPort,
-					PSNatStart:   uint16(topts.psnaStart),
-					PSNatLen:     uint16(topts.psnatEnd-topts.psnaStart) + 1,
-					Flags:        libbpf.GlobalsNoDSRCidrs,
-					LogFilterJmp: 0xffffffff,
-					IfaceName:    setLogPrefix(ifaceLog),
-				}
-				if topts.flowLogsEnabled {
-					globals.Flags |= libbpf.GlobalsFlowLogsEnabled
-				}
-				if topts.natOutExcludeHosts {
-					globals.Flags |= libbpf.GlobalsNATOutgoingExcludeHosts
-				}
-				if topts.ipv6 {
-					copy(globals.HostTunnelIPv6[:], node1tunIPV6.To16())
-					copy(globals.HostIPv6[:], hostIP.To16())
-					copy(globals.IntfIPv6[:], intfIPV6.To16())
-
-					for i := 0; i < tcdefs.ProgIndexEnd; i++ {
-						globals.JumpsV6[i] = uint32(i)
-					}
-					globals.Flags |= libbpf.GlobalsRPFOptionStrict
-					log.WithField("globals", globals).Debugf("configure program v6")
-				} else {
-					copy(globals.HostIPv4[0:4], hostIP)
-					copy(globals.IntfIPv4[0:4], intfIP)
-					copy(globals.HostTunnelIPv4[0:4], node1tunIP.To4())
-
-					for i := 0; i < tcdefs.ProgIndexEnd; i++ {
-						globals.Jumps[i] = uint32(i)
-					}
-					log.WithField("globals", globals).Debugf("configure program")
-				}
-				if err := globals.Set(m); err != nil {
-					return nil, fmt.Errorf("failed to configure tc program: %w", err)
-				}
-				log.WithField("program", fname).Debugf("Configured BPF program iface \"%s\"", ifaceLog)
+				log.WithField("globals", globals).Debugf("configure program")
 			}
-			continue
-		}
-		pin := "/sys/fs/bpf/tc/globals/" + m.Name()
-		log.WithFields(log.Fields{
-			"pin":        pin,
-			"key size":   m.KeySize(),
-			"value size": m.ValueSize(),
-		}).Debug("Pinning map")
-		cmd := exec.Command("bpftool", "map", "show", "pinned", pin)
-		log.WithField("cmd", cmd.String()).Debugf("executing")
-		out, _ := cmd.Output()
-		log.WithField("output", string(out)).Debug("map")
-		log.WithField("size", m.MaxEntries()).Debug("libbpf map")
-		log.WithField("entry size", m.ValueSize()).Debug("libbpf map")
-		if err := m.SetPinPath(pin); err != nil {
-			obj.Close()
-			return nil, fmt.Errorf("error pinning map %s: %w", m.Name(), err)
+			data = globals
+		} else {
+			ctTimeouts := timeouts.DefaultTimeouts()
+			if topts.ctTimeouts != nil {
+				ctTimeouts = *topts.ctTimeouts
+			}
+			data = &libbpf.CTCleanupGlobalData{
+				CreationGracePeriod: ctTimeouts.CreationGracePeriod,
+				TCPSynSent:          ctTimeouts.TCPSynSent,
+				TCPEstablished:      ctTimeouts.TCPEstablished,
+				TCPFinsSeen:         ctTimeouts.TCPFinsSeen,
+				TCPResetSeen:        ctTimeouts.TCPResetSeen,
+				UDPTimeout:          ctTimeouts.UDPTimeout,
+				GenericTimeout:      ctTimeouts.GenericTimeout,
+				ICMPTimeout:         ctTimeouts.ICMPTimeout,
+			}
 		}
 	}
-
-	if err := obj.Load(); err != nil {
-		return nil, fmt.Errorf("load object: %w", err)
+	obj, err := bpf.LoadObject(fname, data)
+	if err != nil {
+		return nil, fmt.Errorf("open object %s: %w", fname, err)
 	}
 
 	progDir := bpfFsDir
@@ -897,52 +881,28 @@ out:
 func objUTLoad(fname, bpfFsDir, ipFamily string, topts testOpts, polProg, hasHostConflictProg bool) (*libbpf.Obj, error) {
 	log.WithField("program", fname).Debug("Loading BPF UT program")
 
-	obj, err := libbpf.OpenObject(fname)
+	globals := &libbpf.TcGlobalData{
+		Tmtu:       natTunnelMTU,
+		VxlanPort:  testVxlanPort,
+		PSNatStart: uint16(topts.psnaStart),
+		PSNatLen:   uint16(topts.psnatEnd-topts.psnaStart) + 1,
+		Flags:      libbpf.GlobalsNoDSRCidrs,
+		IfaceName:  setLogPrefix(topts.progLog + "-" + bpfIfaceName),
+	}
+	if topts.ipv6 {
+		copy(globals.HostTunnelIPv6[:], node1tunIPV6.To16())
+		copy(globals.HostIPv6[:], hostIP.To16())
+		copy(globals.IntfIPv6[:], intfIPV6.To16())
+	} else {
+		copy(globals.HostTunnelIPv4[0:4], node1tunIP.To4())
+		copy(globals.HostIPv4[0:4], hostIP.To4())
+		copy(globals.IntfIPv4[0:4], intfIP.To4())
+	}
+
+	obj, err := bpf.LoadObject(fname, globals)
 	if err != nil {
 		return nil, fmt.Errorf("open object %s: %w", fname, err)
 	}
-
-	for m, err := obj.FirstMap(); m != nil && err == nil; m, err = m.NextMap() {
-		if m.IsMapInternal() {
-			globals := libbpf.TcGlobalData{
-				Tmtu:       natTunnelMTU,
-				VxlanPort:  testVxlanPort,
-				PSNatStart: uint16(topts.psnaStart),
-				PSNatLen:   uint16(topts.psnatEnd-topts.psnaStart) + 1,
-				Flags:      libbpf.GlobalsNoDSRCidrs,
-				IfaceName:  setLogPrefix(topts.progLog + "-" + bpfIfaceName),
-			}
-			if topts.ipv6 {
-				copy(globals.HostTunnelIPv6[:], node1tunIPV6.To16())
-				copy(globals.HostIPv6[:], hostIP.To16())
-				copy(globals.IntfIPv6[:], intfIPV6.To16())
-			} else {
-				copy(globals.HostTunnelIPv4[0:4], node1tunIP.To4())
-				copy(globals.HostIPv4[0:4], hostIP.To4())
-				copy(globals.IntfIPv4[0:4], intfIP.To4())
-			}
-			if err := globals.Set(m); err != nil {
-				return nil, fmt.Errorf("failed to configure tc program: %w", err)
-			}
-			break
-		}
-		pin := "/sys/fs/bpf/tc/globals/" + m.Name()
-		log.WithField("pin", pin).Debug("Pinning map")
-		cmd := exec.Command("bpftool", "map", "show", "pinned", pin)
-		log.WithField("cmd", cmd.String()).Debugf("executing")
-		out, _ := cmd.Output()
-		log.WithField("output", string(out)).Debug("map")
-		log.WithField("size", m.MaxEntries()).Debug("libbpf map")
-		if err := m.SetPinPath(pin); err != nil {
-			obj.Close()
-			return nil, fmt.Errorf("error pinning map %s: %w", m.Name(), err)
-		}
-	}
-
-	if err := obj.Load(); err != nil {
-		return nil, fmt.Errorf("load object: %w", err)
-	}
-
 	progDir := bpfFsDir
 
 	err = obj.PinPrograms(progDir)
@@ -1143,6 +1103,7 @@ type testOpts struct {
 	objname            string
 	flowLogsEnabled    bool
 	natOutExcludeHosts bool
+	ctTimeouts         *timeouts.Timeouts
 }
 
 type testOption func(opts *testOpts)
@@ -1160,6 +1121,12 @@ func withLogLevel(l log.Level) testOption {
 }
 
 var _ = withLogLevel
+
+func withConntrackTimeouts(t timeouts.Timeouts) testOption {
+	return func(o *testOpts) {
+		o.ctTimeouts = &t
+	}
+}
 
 func withXDP() testOption {
 	return func(o *testOpts) {

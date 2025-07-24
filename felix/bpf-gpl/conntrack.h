@@ -18,9 +18,7 @@
 #define IPPROTO_ICMP_46	IPPROTO_ICMP
 #endif
 
-#ifndef UNITTEST
 #include "conntrack_cleanup.h"
-#endif
 // Connection tracking.
 
 #define PSNAT_RETRIES	3
@@ -666,12 +664,10 @@ static CALI_BPF_INLINE struct calico_ct_result calico_ct_lookup(struct cali_tc_c
 	struct calico_ct_value *v = cali_ct_lookup_elem(&k);
 	bool expired = false;
 
-#ifndef UNITTEST
 	if (v && entry_expired(&k, v)) {
 		cali_ct_delete_elem(&k);
 		expired = true;
 	}
-#endif
 
 	if (!v || expired) {
 		if (syn) {
