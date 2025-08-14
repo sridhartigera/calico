@@ -17,18 +17,17 @@
 package legacy
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/projectcalico/calico/felix/bpf/bpfdefs"
+	"github.com/projectcalico/calico/felix/bpf/libbpf"
 	"github.com/projectcalico/calico/libcalico-go/lib/set"
 )
 
@@ -46,35 +45,12 @@ func CountersMapName() string {
 
 func ListPerEPMaps() (map[int]string, error) {
 	mapIDToPath := make(map[int]string)
-	err := filepath.Walk("/sys/fs/bpf/tc", /* N.B. hardcoded to what it used to be! */
-		func(p string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if strings.Contains(p, "globals") {
-				return nil
-			}
-			if strings.HasPrefix(info.Name(), JumpMapName()) ||
-				strings.HasPrefix(info.Name(), CountersMapName()) {
-				log.WithField("path", p).Debug("Examining map")
-
-				out, err := exec.Command("bpftool", "map", "show", "pinned", p).Output()
-				if err != nil {
-					log.WithError(err).Panic("Failed to show map")
-				}
-				log.WithField("dump", string(out)).Debug("Map show before deletion")
-				idStr := string(bytes.Split(out, []byte(":"))[0])
-				id, err := strconv.Atoi(idStr)
-				if err != nil {
-					log.WithError(err).WithField("dump", string(out)).Error("Failed to parse bpftool output.")
-					return err
-				}
-				mapIDToPath[id] = p
-			}
-			return nil
-		})
-
-	return mapIDToPath, err
+	for m, err := libbpf.FirstMap(); m != nil && err == nil; m, err = m.NextMap() {
+		if strings.HasPrefix(m.Name, "cali") {
+			mapIDToPath[int(m.Id)] = path.Join(bpfdefs.GlobalPinDir, m.Name)
+		}
+	}
+	return mapIDToPath, nil
 }
 
 // pinDirRegex matches tc's and xdp's auto-created directory names, directories created when using libbpf
@@ -95,14 +71,24 @@ func CleanUpMaps() {
 		return
 	}
 
-	// Remove the pins.
-	for id, p := range mapIDToPath {
-		log.WithFields(log.Fields{"id": id, "path": p}).Debug("Removing stale BPF map pin.")
-		err := os.Remove(p)
-		if err != nil {
-			log.WithError(err).Warn("Removed stale BPF map pin.")
+	mapsUsed := set.New[int]()
+	for p, err := libbpf.FirstProg(); p != nil && err == nil; p, err = p.NextProg() {
+		if strings.HasPrefix(p.Name, "cali") {
+			for _, v := range p.MapIDs {
+				mapsUsed.Add(int(v))
+			}
 		}
-		log.WithFields(log.Fields{"id": id, "path": p}).Info("Removed stale BPF map pin.")
+	}
+
+	for id, p := range mapIDToPath {
+		if !mapsUsed.Contains(id) {
+			log.WithFields(log.Fields{"id": id, "path": p}).Debug("Removing stale BPF map pin.")
+			err := os.Remove(p)
+			if err != nil {
+				log.WithError(err).Warn("Removed stale BPF map pin.")
+			}
+			log.WithFields(log.Fields{"id": id, "path": p}).Info("Removed stale BPF map pin.")
+		}
 	}
 
 	// Look for empty dirs.

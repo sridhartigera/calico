@@ -654,3 +654,64 @@ func ObjGet(path string) (int, error) {
 
 	return int(fd), err
 }
+
+type Prog struct {
+	Name    string
+	Id      uint
+	NumMaps int
+	MapIDs  []uint32
+}
+
+func FirstProg() (*Prog, error) {
+	p := &Prog{Id: 0}
+	return p.NextProg()
+}
+
+func (p *Prog) NextProg() (*Prog, error) {
+	var info C.struct_bpf_prog_info
+	var mapIDs [32]C.__u32
+	var nextID C.__u32
+
+	info.nr_map_ids = 32
+	info.map_ids = C.__u64(uintptr(unsafe.Pointer(&mapIDs[0])))
+
+	if C.bpf_prog_get_next_id(C.uint(p.Id), &nextID) != 0 {
+		return nil, fmt.Errorf("no BPF programs found")
+	}
+	_, err := C.bpf_get_prog_info(nextID, &info)
+	if err != nil {
+		return nil, fmt.Errorf("error getting program info %w", err)
+	}
+
+	prog := &Prog{Id: uint(info.id), NumMaps: int(info.nr_map_ids), Name: C.GoString(&info.name[0])}
+	prog.MapIDs = make([]uint32, int(info.nr_map_ids))
+	for i := 0; i < prog.NumMaps; i++ {
+		prog.MapIDs[i] = uint32(mapIDs[i])
+	}
+	return prog, nil
+}
+
+type MapInfo struct {
+	Name string
+	Id   uint
+}
+
+func FirstMap() (*MapInfo, error) {
+	m := &MapInfo{Id: 0}
+	return m.NextMap()
+}
+
+func (m *MapInfo) NextMap() (*MapInfo, error) {
+	var info C.struct_bpf_map_info
+	var nextID C.__u32
+
+	if C.bpf_map_get_next_id(C.uint(m.Id), &nextID) != 0 {
+		return nil, fmt.Errorf("no BPF programs found")
+	}
+	_, err := C.bpf_get_map_info(nextID, &info)
+	if err != nil {
+		return nil, fmt.Errorf("error getting program info %w", err)
+	}
+
+	return &MapInfo{Id: uint(info.id), Name: C.GoString(&info.name[0])}, nil
+}

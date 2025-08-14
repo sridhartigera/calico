@@ -803,6 +803,7 @@ func describeBPFTests(opts ...bpfTestOpt) bool {
 				It("should allow traffic from workload to host", func() {
 					cc.Expect(Some, w[1], hostW)
 					cc.Expect(Some, hostW, w[0])
+					time.Sleep(70*time.Second)
 					cc.CheckConnectivity(conntrackChecks(tc.Felixes)...)
 				})
 			})

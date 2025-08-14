@@ -35,6 +35,7 @@ import (
 	"github.com/projectcalico/calico/felix/bpf"
 	"github.com/projectcalico/calico/felix/bpf/bpfdefs"
 	"github.com/projectcalico/calico/felix/bpf/bpfmap"
+	v3 "github.com/projectcalico/calico/felix/bpf/conntrack/v3"
 	"github.com/projectcalico/calico/felix/bpf/hook"
 	"github.com/projectcalico/calico/felix/bpf/ifstate"
 	"github.com/projectcalico/calico/felix/bpf/jump"
@@ -1159,6 +1160,7 @@ func TestAttachTcx(t *testing.T) {
 	tcxProgs, err := tc.ListAttachedTcxPrograms("workloadep0", "ingress")
 	Expect(err).NotTo(HaveOccurred())
 	Expect(len(tcxProgs)).To(Equal(1))
+
 	// Now attach Tc program.
 	ap := &tc.AttachPoint{
 		AttachPoint: bpf.AttachPoint{
@@ -1291,6 +1293,58 @@ func TestLogFilters(t *testing.T) {
 		Expect(wl0State.TcIngressFilter()).To(Equal(-1))
 		Expect(wl0State.TcEgressFilter()).To(Equal(-1))
 	})
+}
+
+func TestMapCleanup(t *testing.T) {
+	RegisterTestingT(t)
+	ct3Map := maps.NewPinnedMap(v3.MapParams)
+	err := ct3Map.EnsureExists()
+	Expect(err).NotTo(HaveOccurred())
+	_, err = os.Stat("/sys/fs/bpf/tc/globals/cali_v4_ct3")
+	Expect(err).NotTo(HaveOccurred())
+
+	bpfmaps, err := bpfmap.CreateBPFMaps(false)
+	Expect(err).NotTo(HaveOccurred())
+
+	loglevel := "off"
+	bpfEpMgr, err := newBPFTestEpMgr(
+		&linux.Config{
+			Hostname:              "uthost",
+			BPFLogLevel:           loglevel,
+			BPFDataIfacePattern:   regexp.MustCompile("^hostep[12]"),
+			VXLANMTU:              1000,
+			VXLANPort:             1234,
+			BPFNodePortDSREnabled: false,
+			RulesConfig: rules.Config{
+				EndpointToHostAction: "RETURN",
+			},
+			BPFExtToServiceConnmark: 0,
+			BPFPolicyDebugEnabled:   true,
+			BPFAttachType:           apiv3.BPFAttachOptionTCX,
+		},
+		bpfmaps,
+		regexp.MustCompile("^workloadep[0123]"),
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	workload0 := createVethName("workloadep0")
+	defer deleteLink(workload0)
+
+	bpfEpMgr.OnUpdate(&proto.HostMetadataUpdate{Hostname: "uthost", Ipv4Addr: "1.2.3.4"})
+	bpfEpMgr.OnUpdate(linux.NewIfaceStateUpdate("workloadep0", ifacemonitor.StateUp, workload0.Attrs().Index))
+	bpfEpMgr.OnUpdate(linux.NewIfaceAddrsUpdate("workloadep0", "1.6.6.6"))
+	bpfEpMgr.OnUpdate(&proto.WorkloadEndpointUpdate{
+		Id: &proto.WorkloadEndpointID{
+			OrchestratorId: "k8s",
+			WorkloadId:     "workloadep0",
+			EndpointId:     "workloadep0",
+		},
+		Endpoint: &proto.WorkloadEndpoint{Name: "workloadep0"},
+	})
+	err = bpfEpMgr.CompleteDeferredWork()
+	Expect(err).NotTo(HaveOccurred())
+	_, err = os.Stat("/sys/fs/bpf/tc/globals/cali_v4_ct3")
+	Expect(err).To(HaveOccurred())
 }
 
 func ifstateMapDump(m maps.Map) ifstate.MapMem {

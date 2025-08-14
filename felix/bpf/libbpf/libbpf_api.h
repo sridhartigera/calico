@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include "globals.h"
+#include <unistd.h>
 #include "ip_addr.h"
 
 static void set_errno(int ret) {
@@ -64,19 +65,44 @@ void bpf_set_attach_type(struct bpf_object *obj, char *progName, uint attach_typ
 	return;
 }
 
+int bpf_get_map_info(uint map_id, struct bpf_map_info *info) {
+        int map_fd = bpf_map_get_fd_by_id(map_id);
+        if (map_fd < 0) {
+                set_errno(-map_fd);
+                return -1; 
+        }
+        int len = sizeof(*info);
+        int err = bpf_map_get_info_by_fd(map_fd, info, &len);
+        close(map_fd);
+        if (err) {
+                set_errno(err);
+                return -1;
+        }
+        return 0;
+}
+
+int bpf_get_prog_info(uint prog_id, struct bpf_prog_info *info) {
+	int prog_fd = bpf_prog_get_fd_by_id(prog_id);
+	if (prog_fd < 0) {
+		set_errno(-prog_fd);
+		return -1;
+	}
+	int len = sizeof(*info);
+        int err = bpf_prog_get_info_by_fd(prog_fd, info, &len);
+	close(prog_fd);
+        if (err) {
+                set_errno(err);
+		return -1;
+        }
+	return 0;
+}
+
 void bpf_get_prog_name(uint prog_id, char *prog_name) {
 	struct bpf_prog_info info = {};
-        int prog_fd = bpf_prog_get_fd_by_id(prog_id);
-        if (prog_fd < 0) {
-		set_errno(-prog_fd);
+	int ret = bpf_get_prog_info(prog_id, &info);
+        if (ret < 0) {
 		return;
         }
-	int len = sizeof(info);
-	int err = bpf_prog_get_info_by_fd(prog_fd, &info, &len);
-	if (err) {
-		set_errno(err);
-		return;
-	}
 	memcpy(prog_name, info.name, strlen(info.name));
 }
 
