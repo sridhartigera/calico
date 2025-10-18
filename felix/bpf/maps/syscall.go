@@ -32,32 +32,30 @@ import "C"
 
 func GetMapFDByPin(filename string) (FD, error) {
 	log.Debugf("GetMapFDByPin(%v)", filename)
-	bpfAttr := C.bpf_maps_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
-
+	//bpfAttr := C.bpf_maps_attr_alloc()
+	//defer C.free(unsafe.Pointer(bpfAttr))
 	cFilename := C.CString(filename)
 	defer C.free(unsafe.Pointer(cFilename))
-
-	C.bpf_maps_attr_setup_obj_get(bpfAttr, cFilename, 0)
-	fd, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_OBJ_GET, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-	if errno != 0 {
-		return 0, errno
+	log.Debugf("GetMapFDByPin: cFilename=%s", C.GoString(cFilename))
+	/*
+		C.bpf_maps_attr_setup_obj_get(bpfAttr, cFilename, 0)
+		fd, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_OBJ_GET, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
+		if errno != 0 {
+			return 0, errno
+		}*/
+	fd, err := C.bpf_get_map_fd_by_pin(cFilename)
+	if err != nil {
+		return 0, err
 	}
-
 	return FD(fd), nil
 }
 
 func GetMapFDByID(mapID int) (FD, error) {
 	log.Debugf("GetMapFDByID(%v)", mapID)
-	bpfAttr := C.bpf_maps_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
-
-	C.bpf_maps_attr_setup_obj_get_id(bpfAttr, C.uint(mapID), 0)
-	fd, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_MAP_GET_FD_BY_ID, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-	if errno != 0 {
-		return 0, errno
+	fd, err := C.bpf_get_map_fd_by_id(C.uint(mapID))
+	if err != nil {
+		return 0, err
 	}
-
 	return FD(fd), nil
 }
 
@@ -73,22 +71,8 @@ func UpdateMapEntryWithFlags(mapFD FD, k, v []byte, flags int) error {
 		return err
 	}
 
-	bpfAttr := C.bpf_maps_attr_alloc()
-	defer C.free(unsafe.Pointer(bpfAttr))
-
-	cK := C.CBytes(k)
-	defer C.free(cK)
-	cV := C.CBytes(v)
-	defer C.free(cV)
-
-	C.bpf_maps_attr_setup_map_elem(bpfAttr, C.uint(mapFD), cK, cV, C.ulonglong(flags))
-
-	_, _, errno := unix.Syscall(unix.SYS_BPF, unix.BPF_MAP_UPDATE_ELEM, uintptr(unsafe.Pointer(bpfAttr)), C.sizeof_union_bpf_attr)
-
-	if errno != 0 {
-		return errno
-	}
-	return nil
+	_, err = C.bpf_map_elem_update(C.int(mapFD), unsafe.Pointer(&k[0]), unsafe.Pointer(&v[0]), C.ulonglong(flags))
+	return err
 }
 
 func GetMapEntry(mapFD FD, k []byte, valueSize int) ([]byte, error) {
@@ -101,13 +85,8 @@ func GetMapEntry(mapFD FD, k []byte, valueSize int) ([]byte, error) {
 
 	val := make([]byte, valueSize)
 
-	errno := C.bpf_maps_map_call(unix.BPF_MAP_LOOKUP_ELEM, C.uint(mapFD),
-		unsafe.Pointer(&k[0]), unsafe.Pointer(&val[0]), 0)
-	if errno != 0 {
-		return nil, unix.Errno(errno)
-	}
-
-	return val, nil
+	_, err = C.bpf_map_elem_lookup(C.int(mapFD), unsafe.Pointer(&k[0]), unsafe.Pointer(&val[0]))
+	return val, err
 }
 
 func checkMapIfDebug(mapFD FD, keySize, valueSize int) error {
@@ -162,13 +141,8 @@ func DeleteMapEntry(mapFD FD, k []byte) error {
 		return err
 	}
 
-	errno := C.bpf_maps_map_call(unix.BPF_MAP_DELETE_ELEM, C.uint(mapFD),
-		unsafe.Pointer(&k[0]), unsafe.Pointer(nil), 0)
-	if errno != 0 {
-		return unix.Errno(errno)
-	}
-
-	return nil
+	_, err = C.bpf_map_elem_delete(C.int(mapFD), unsafe.Pointer(&k[0]))
+	return err
 }
 
 func DeleteMapEntryIfExists(mapFD FD, k []byte) error {

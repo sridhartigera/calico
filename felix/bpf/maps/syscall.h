@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string.h>
+#include <stddef.h>
 #include <linux/bpf.h>
 #include <stdlib.h>
-#include <string.h>
 #include <errno.h>
-#include <unistd.h>
-#include <sys/syscall.h>
 #include <bpf.h>
 
 #include "libbpf.h"
@@ -31,113 +30,57 @@ union bpf_attr *bpf_maps_attr_alloc() {
 // bpf_attr_setup_obj_get sets up the bpf_attr union for use with BPF_OBJ_GET.
 // A C function makes this easier because unions aren't easy to access from Go.
 void bpf_maps_attr_setup_obj_get(union bpf_attr *attr, char *path, __u32 flags) {
-   attr->pathname = (__u64)(unsigned long)path;
+const size_t attr_sz = offsetof(union bpf_attr, path_fd) + sizeof(((union bpf_attr *)0)->path_fd);
+   memset(attr, 0, attr_sz);
+   attr->pathname = (__u64)(unsigned long)(void*)path;
    attr->bpf_fd = 0;
-   attr->file_flags = flags;
+   attr->file_flags = 0;
 }
 
-// bpf_attr_setup_get_info sets up the bpf_attr union for use with BPF_OBJ_GET_INFO_BY_FD.
-// A C function makes this easier because unions aren't easy to access from Go.
-void bpf_maps_attr_setup_get_info(union bpf_attr *attr, __u32 map_fd,
-                             __u32 info_size, void *info) {
-   attr->info.bpf_fd = map_fd;
-   attr->info.info_len = info_size;
-   attr->info.info = (__u64)(unsigned long)info;
-}
 
-// bpf_attr_setup_obj_get_id sets up the bpf_attr union for use with BPF_XXX_GET_FD_BY_ID.
-// A C function makes this easier because unions aren't easy to access from Go.
-void bpf_maps_attr_setup_obj_get_id(union bpf_attr *attr, __u32 id, __u32 flags) {
-   attr->map_id = id;
-   attr->open_flags = flags;
-}
-
-// bpf_attr_setup_map_elem sets up the bpf_attr union for use with BPF_MAP_GET|UPDATE
-// A C function makes this easier because unions aren't easy to access from Go.
-void bpf_maps_attr_setup_map_elem(union bpf_attr *attr, __u32 map_fd, void *pointer_to_key, void *pointer_to_value, __u64 flags) {
-   attr->map_fd = map_fd;
-   attr->key = (__u64)(unsigned long)pointer_to_key;
-   attr->value = (__u64)(unsigned long)pointer_to_value;
-   attr->flags = flags;
-}
-
-// bpf_attr_setup_map_get_next_key sets up the bpf_attr union for use with BPF_MAP_GET_NEXT_KEY
-// A C function makes this easier because unions aren't easy to access from Go.
-void bpf_maps_attr_setup_map_get_next_key(union bpf_attr *attr, __u32 map_fd, void *key, void *next_key, __u64 flags) {
-   attr->map_fd = map_fd;
-   attr->key = (__u64)(unsigned long)key;
-   attr->next_key = (__u64)(unsigned long)next_key;
-   attr->flags = flags;
-}
-
-// bpf_attr_setup_map_elem_for_delete sets up the bpf_attr union for use with BPF_MAP_DELETE_ELEM
-// A C function makes this easier because unions aren't easy to access from Go.
-void bpf_maps_attr_setup_map_elem_for_delete(union bpf_attr *attr, __u32 map_fd, void *pointer_to_key) {
-   attr->map_fd = map_fd;
-   attr->key = (__u64)(unsigned long)pointer_to_key;
-}
-
-int bpf_maps_map_call(int cmd, __u32 map_fd, void *pointer_to_key, void *pointer_to_value, __u64 flags) {
-   union bpf_attr attr = {};
-
-   attr.map_fd = map_fd;
-   attr.key = (__u64)(unsigned long)pointer_to_key;
-   attr.value = (__u64)(unsigned long)pointer_to_value;
-   attr.flags = flags;
-
-   return syscall(SYS_bpf, cmd, &attr, sizeof(attr)) == 0 ? 0 : errno;
-}
-
-int bpf_maps_map_load_multi(__u32 map_fd,
-                            void *current_key,
-			    int max_num,
-			    int key_stride,
-			    void *keys_out,
-			    int value_stride,
-			    void *values_out) {
-   int count = 0;
-   union bpf_attr attr = {};
-   __u64 last_good_key = (__u64)(unsigned long)current_key;
-   attr.map_fd = map_fd;
-   attr.key = last_good_key;
-   for (int i = 0; i < max_num; i++) {
-     // Load the next key from the map.
-   get_next_key:
-     attr.value = (__u64)(unsigned long)keys_out;
-     int rc = syscall(SYS_bpf, BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr));
-     if (rc != 0) {
-       if (errno == ENOENT) {
-         return count; // Reached end of map.
-       }
-       return -errno;
-     }
-     // Load the corresponding value.
-     attr.key = (__u64)(unsigned long)keys_out;
-     attr.value = (__u64)(unsigned long)values_out;
-
-     rc = syscall(SYS_bpf, BPF_MAP_LOOKUP_ELEM, &attr, sizeof(attr));
-     if (rc != 0) {
-       if (errno == ENOENT) {
-         // Expected next entry has just been deleted.  We need
-         // to BPF_MAP_GET_NEXT_KEY again from the previous key.
-         attr.key = last_good_key;
-         goto get_next_key;
-       }
-       return -errno;
-     }
-     last_good_key = attr.key;
-
-     keys_out+=key_stride;
-     values_out+=value_stride;
-     count++;
-   }
-   return count;
+int get_size(union bpf_attr *attr) {
+   return offsetof(union bpf_attr, path_fd) + sizeof(((union bpf_attr *)0)->path_fd);
 }
 
 static void set_errno(int ret) {
 	errno = ret >= 0 ? ret : -ret;
 }
 
+int bpf_get_map_fd_by_id(__u32 id)
+{
+	int fd = bpf_map_get_fd_by_id(id);
+	set_errno(fd);
+	return fd;
+}
+
+int bpf_get_map_fd_by_pin(const char *path)
+{
+	printf("bpf_get_map_fd_by_pin: path=%s\n", path);
+	int fd = bpf_obj_get(path);
+	set_errno(fd);
+	return fd;
+}
+
+int bpf_map_elem_update(int map_fd, void *key, void *value, __u64 flags)
+{
+	int ret = bpf_map_update_elem(map_fd, key, value, flags);
+	set_errno(ret);
+	return ret;
+}
+
+int bpf_map_elem_lookup(int map_fd, void *key, void *value)
+{
+	int ret = bpf_map_lookup_elem(map_fd, key, value);
+	set_errno(ret);
+	return ret;
+}
+
+int bpf_map_elem_delete(int map_fd, void *key)
+{
+	int ret = bpf_map_delete_elem(map_fd, key);
+	set_errno(ret);
+	return ret;
+}
 void bpf_map_batch_lookup(int fd, void *in_batch, void *out_batch, void *keys,
 			  void *values, __u32 *count, __u64 flags)
 {
@@ -146,3 +89,5 @@ void bpf_map_batch_lookup(int fd, void *in_batch, void *out_batch, void *keys,
 
 	set_errno(bpf_map_lookup_batch(fd, in_batch, out_batch, keys, values, count, &opts));
 }
+
+
