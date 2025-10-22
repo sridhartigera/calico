@@ -933,15 +933,16 @@ func NewIntDataplaneDriver(config Config) *InternalDataplane {
 		// Important that we create the maps before we load a BPF program with TC since we make sure the map
 		// metadata name is set whereas TC doesn't set that field.
 		var conntrackScannerV4, conntrackScannerV6 *bpfconntrack.Scanner
+		var workloadRemoveChanV4, workloadRemoveChanV6 chan string
 		var ipSetIDAllocatorV4, ipSetIDAllocatorV6 *idalloc.IDAllocator
 		ipSetIDAllocatorV4 = idalloc.New()
 
 		// Start IPv4 BPF dataplane components
-		conntrackScannerV4 = startBPFDataplaneComponents(proto.IPVersion_IPV4, bpfMaps.V4, ipSetIDAllocatorV4, config, ipsetsManager, dp)
+		conntrackScannerV4, workloadRemoveChanV4 = startBPFDataplaneComponents(proto.IPVersion_IPV4, bpfMaps.V4, ipSetIDAllocatorV4, config, ipsetsManager, dp)
 		if config.BPFIpv6Enabled {
 			// Start IPv6 BPF dataplane components
 			ipSetIDAllocatorV6 = idalloc.New()
-			conntrackScannerV6 = startBPFDataplaneComponents(proto.IPVersion_IPV6, bpfMaps.V6, ipSetIDAllocatorV6, config, ipsetsManagerV6, dp)
+			conntrackScannerV6, workloadRemoveChanV6 = startBPFDataplaneComponents(proto.IPVersion_IPV6, bpfMaps.V6, ipSetIDAllocatorV6, config, ipsetsManagerV6, dp)
 		}
 
 		workloadIfaceRegex := regexp.MustCompile(strings.Join(interfaceRegexes, "|"))
@@ -978,6 +979,8 @@ func NewIntDataplaneDriver(config Config) *InternalDataplane {
 			config.HealthAggregator,
 			dataplaneFeatures,
 			podMTU,
+			workloadRemoveChanV4,
+			workloadRemoveChanV6,
 		)
 		if err != nil {
 			log.WithError(err).Panic("Failed to create BPF endpoint manager.")
@@ -1854,6 +1857,18 @@ func (d *InternalDataplane) setUpIptablesBPF() {
 	rulesConfig := d.config.RulesConfig
 	for _, t := range d.filterTables {
 		fwdRules := []generictables.Rule{
+			generictables.Rule{
+				Match:   d.newMatch().MarkMatchesWithMask(tcdefs.MarkSeenTCPRst, tcdefs.MarkSeenTCPRstMask),
+				Comment: []string{"Reject packets with RST to unknown TCP flows."},
+				Action:  d.actions.Log("TCP RST to unknown flow"),
+			},
+			generictables.Rule{
+				Match: d.newMatch().
+					MarkMatchesWithMask(tcdefs.MarkSeenTCPRst, tcdefs.MarkSeenTCPRstMask).
+					Protocol("tcp"),
+				Comment: []string{"Reject packets with RST to unknown TCP flows."},
+				Action:  d.actions.Reject("tcp-reset"),
+			},
 			{
 				// Bypass is a strong signal from the BPF program, it means that the flow is approved
 				// by the program at both ingress and egress.
@@ -1868,6 +1883,18 @@ func (d *InternalDataplane) setUpIptablesBPF() {
 		// Handle packets for flows that pre-date the BPF programs.  The BPF program doesn't have any conntrack
 		// state for these so it allows them to fall through to iptables with a mark set.
 		inputRules = append(inputRules,
+			generictables.Rule{
+				Match:   d.newMatch().MarkMatchesWithMask(tcdefs.MarkSeenTCPRst, tcdefs.MarkSeenTCPRstMask),
+				Comment: []string{"Reject packets with RST to unknown TCP flows."},
+				Action:  d.actions.Log("TCP RST to unknown flow"),
+			},
+			generictables.Rule{
+				Match: d.newMatch().
+					MarkMatchesWithMask(tcdefs.MarkSeenTCPRst, tcdefs.MarkSeenTCPRstMask).
+					Protocol("tcp"),
+				Comment: []string{"Reject packets with RST to unknown TCP flows."},
+				Action:  d.actions.Reject("tcp-reset"),
+			},
 			generictables.Rule{
 				Match: d.newMatch().
 					MarkMatchesWithMask(tcdefs.MarkSeenFallThrough, tcdefs.MarkSeenFallThroughMask).
@@ -2817,7 +2844,7 @@ func startBPFDataplaneComponents(
 	config Config,
 	ipSetsMgr *dpsets.IPSetsManager,
 	dp *InternalDataplane,
-) *bpfconntrack.Scanner {
+) (*bpfconntrack.Scanner, chan string) {
 	ipSetConfig := config.RulesConfig.IPSetConfigV4
 	ipSetEntry := bpfipsets.IPSetEntryFromBytes
 	ipSetProtoEntry := bpfipsets.ProtoIPSetMemberToBPFEntry
@@ -2910,6 +2937,8 @@ func startBPFDataplaneComponents(
 		log.Errorf("error creating the bpf cleaner %v", err)
 	}
 
+	workloadRemoveChan := make(chan string, 1000)
+
 	conntrackScanner := bpfconntrack.NewScanner(maps.CtMap, ctKey, ctVal,
 		config.ConfigChangedRestartCallback,
 		config.BPFMapSizeConntrackScaling, maps.CtCleanupMap.(bpfmaps.MapWithExistsCheck),
@@ -2936,10 +2965,11 @@ func startBPFDataplaneComponents(
 		bpfRTMgr.setHostIPUpdatesCallBack(kp.OnHostIPsUpdate)
 		bpfRTMgr.setRoutesCallBacks(kp.OnRouteUpdate, kp.OnRouteDelete)
 		conntrackScanner.AddUnlocked(bpfconntrack.NewStaleNATScanner(kp))
+		conntrackScanner.AddUnlocked(bpfconntrack.NewWorkloadRemoveScanner(workloadRemoveChan))
 	} else {
 		log.Info("BPF enabled but no Kubernetes client available, unable to run kube-proxy module.")
 	}
-	return conntrackScanner
+	return conntrackScanner, workloadRemoveChan
 }
 
 func conntrackMapSizeFromFile() (int, error) {

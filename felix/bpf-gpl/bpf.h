@@ -192,6 +192,7 @@ enum calico_skb_mark {
 	CALI_SKB_MARK_NAT_OUT                = CALI_SKB_MARK_BYPASS  | 0x00800000,
 	/* CALI_SKB_MARK_MASQ enforces MASQ on the connection. */
 	CALI_SKB_MARK_MASQ                   = CALI_SKB_MARK_BYPASS  | 0x00600000,
+	CALI_SKB_MARK_RST                   = CALI_SKB_MARK_BYPASS  | 0x00400000,
 	/* CALI_SKB_MARK_SKIP_FIB is used for packets that should pass through host IP stack. */
 	CALI_SKB_MARK_SKIP_FIB               = CALI_SKB_MARK_SEEN | 0x00100000,
 	/* CT_ESTABLISHED is used by iptables to tell the BPF programs that the packet is part of an

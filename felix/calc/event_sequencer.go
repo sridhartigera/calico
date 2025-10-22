@@ -507,6 +507,7 @@ func (buf *EventSequencer) OnEndpointTierUpdate(endpointKey model.EndpointKey,
 	} else {
 		// Update.
 		buf.pendingEndpointDeletes.Discard(endpointKey)
+		log.Infof("Sridhar OnEndpointTierUpdate endpointKey: %v", endpointKey)
 		buf.pendingEndpointUpdates[endpointKey] = endpointUpdate{
 			endpoint: endpoint,
 			peerData: peerData,

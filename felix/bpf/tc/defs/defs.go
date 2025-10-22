@@ -36,6 +36,8 @@ const (
 	MarkSeenMASQ              = MarkSeenBypass | 0x00600000
 	MarkSeenMASQMask          = MarkSeenBypassMask | 0x00f00000
 	MarkSeenSkipFIB           = MarkSeen | 0x00100000
+	MarkSeenTCPRst            = MarkSeenBypass | 0x00400000
+	MarkSeenTCPRstMask        = MarkSeenBypassMask | 0x00f00000
 
 	MarkLinuxConntrackEstablished     = 0x08000000
 	MarkLinuxConntrackEstablishedMask = 0x08000000
@@ -56,6 +58,7 @@ const (
 	ProgIndexIcmpInnerNat
 	ProgIndexNewFlow
 	ProgIndexIPFrag
+	ProgIndexTCPRst
 	ProgIndexMainDebug
 	ProgIndexPolicyDebug
 	ProgIndexAllowedDebug
@@ -65,6 +68,7 @@ const (
 	ProgIndexIcmpInnerNatDebug
 	ProgIndexNewFlowDebug
 	ProgIndexIPFragDebug
+	ProgIndexTCPRstDebug
 	ProgIndexEndDebug
 	ProgIndexEnd
 
@@ -89,6 +93,7 @@ var ProgramNames = []string{
 	"calico_tc_skb_icmp_inner_nat",
 	"calico_tc_skb_new_flow_entrypoint",
 	"calico_tc_skb_ipv4_frag",
+	"calico_tc_skb_send_tcp_rst",
 	/* ipv4 - debug */
 	"calico_tc_main",
 	"calico_tc_norm_pol_tail",
@@ -99,6 +104,7 @@ var ProgramNames = []string{
 	"calico_tc_skb_icmp_inner_nat",
 	"calico_tc_skb_new_flow_entrypoint",
 	"calico_tc_skb_ipv4_frag",
+	"calico_tc_skb_send_tcp_rst",
 	/* ipv6 */
 	"calico_tc_main",
 	"calico_tc_norm_pol_tail",
@@ -109,6 +115,7 @@ var ProgramNames = []string{
 	"calico_tc_skb_icmp_inner_nat",
 	"calico_tc_skb_new_flow_entrypoint",
 	"",
+	"",
 	/* ipv6 - debug */
 	"calico_tc_main",
 	"calico_tc_norm_pol_tail",
@@ -118,6 +125,7 @@ var ProgramNames = []string{
 	"calico_tc_host_ct_conflict",
 	"calico_tc_skb_icmp_inner_nat",
 	"calico_tc_skb_new_flow_entrypoint",
+	"",
 	"",
 }
 

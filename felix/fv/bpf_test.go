@@ -3109,9 +3109,9 @@ func describeBPFTests(opts ...bpfTestOpt) bool {
 					})
 
 					ifUDPnoCTLB := func(desc string, body func()) {
-						if testOpts.protocol != "udp" || testOpts.connTimeEnabled {
-							return
-						}
+						//if testOpts.protocol != "udp" || testOpts.connTimeEnabled {
+						//	return
+						//}
 						It(desc, body)
 					}
 
@@ -3194,6 +3194,12 @@ func describeBPFTests(opts ...bpfTestOpt) bool {
 						w[0][0].RemoveFromInfra(infra)
 
 						By("Testing connectivity continues")
+						fmt.Println("Waiting for 200s")
+						time.Sleep(50 * time.Second)
+						tcpdump := tc.Felixes[1].AttachTCPDump("eth0")
+						tcpdump.SetLogEnabled(true)
+						tcpdump.Start()
+						defer tcpdump.Stop()
 						prevCount = pc.PongCount()
 						Eventually(pc.PongCount, "15s").Should(BeNumerically(">", prevCount),
 							"Expected to see pong responses on the connection but didn't receive any")

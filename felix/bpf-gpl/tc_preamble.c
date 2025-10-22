@@ -21,6 +21,7 @@ const volatile struct cali_tc_preamble_globals __globals;
 #define JUMP(idx) globals->data.jumps[JUMP_IDX(idx)]
 #define JUMP_DEBUG(idx) globals->data.jumps[JUMP_IDX_DEBUG(idx)]
 
+#define EMIT_LOGS 1
 SEC("tc")
 int  cali_tc_preamble(struct __sk_buff *skb)
 {
@@ -69,14 +70,16 @@ int  cali_tc_preamble(struct __sk_buff *skb)
 	/* If we have log filter installed, tell the filter where to jump next
 	 * and jump to the filter.
 	 */
+#if 1
 	if (globals->data.log_filter_jmp != (__u32)-1) {
-		skb->cb[0] = JUMP(PROG_INDEX_MAIN);
+		skb->cb[0] = JUMP_DEBUG(PROG_INDEX_MAIN);
 		skb->cb[1] = JUMP_DEBUG(PROG_INDEX_MAIN);
 		bpf_tail_call(skb, &cali_jump_prog_map, globals->data.log_filter_jmp);
 		CALI_LOG("tc_preamble iface %s failed to call log filter %d",
 				globals->data.iface_name, globals->data.log_filter_jmp);
 		/* try to jump to the regular path */
 	}
+#endif
 
 	/* Jump to the start of the prog chain. */
 #if EMIT_LOGS

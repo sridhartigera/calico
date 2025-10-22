@@ -626,9 +626,12 @@ func (m *bpfRouteManager) onRouteRemove(update *proto.RouteRemove) {
 	if uint8(m.ipFamily) != cidr.Version() {
 		return
 	}
+	log.Infof("Removing route for %s", cidr)
 	if _, ok := m.cidrToRoute[cidr]; ok {
+		log.Infof("Removing route1 for %s", cidr)
 		// Check the entry is in the cache before removing and flagging as dirty.
 		delete(m.cidrToRoute, cidr)
+
 		m.dirtyCIDRs.Add(cidr)
 	}
 }

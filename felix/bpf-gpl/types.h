@@ -161,6 +161,8 @@ enum cali_state_flags {
 	/* CALI_ST_CLUSTER_EXTERNAL is set if the packet is heading toward or originating from
 	 * an endpoint outside the cluster */
 	CALI_ST_CLUSTER_EXTERNAL   = 0x2000,
+	CALI_ST_TCP_RST	  = 0x4000,
+
 };
 
 struct fwd {

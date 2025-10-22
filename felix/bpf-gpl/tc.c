@@ -59,6 +59,7 @@
 
 #ifndef IPVER6
 #include "ip_v4_fragment.h"
+#include "tcp4.h"
 #endif
 
 #define HAS_HOST_CONFLICT_PROG CALI_F_TO_HEP
@@ -434,6 +435,18 @@ static CALI_BPF_INLINE void calico_tc_process_ct_lookup(struct cali_tc_ctx *ctx)
 			ctx->state->flags |= CALI_ST_SKIP_FIB;
 		}
 		CALI_DEBUG("CT Hit");
+
+		if (ctx->state->ip_proto == IPPROTO_TCP) {
+			struct cali_rt *dst_rt = cali_rt_lookup(&ctx->state->ip_dst);
+			if (dst_rt) {
+				CALI_DEBUG("CT Hit dest route flags 0x%x", dst_rt->next_hop);
+			}
+			if (dst_rt && cali_rt_flags_is_in_pool(dst_rt->flags) &&
+					!cali_rt_is_local(dst_rt) &&
+					!cali_rt_is_workload(dst_rt)) {
+				CALI_DEBUG("Hit the default route to a remote IP " IP_FMT "", debug_ip(ctx->state->ip_dst));
+			}
+		}
 
 		if (ctx->state->ip_proto == IPPROTO_TCP && ct_result_is_syn(ctx->state->ct_result.rc)) {
 			CALI_DEBUG("Forcing policy on SYN");
@@ -1220,6 +1233,12 @@ static CALI_BPF_INLINE struct fwd post_nat(struct cali_tc_ctx *ctx,
 	struct cali_tc_state *state = ctx->state;
 	int rc = TC_ACT_UNSPEC;
 
+	CALI_DEBUG("post_nat nat_res %d", nat_res);
+	CALI_DEBUG("post_nat fib %d", fib);
+
+	CALI_DEBUG("post_nat is_dnat %d", is_dnat);
+	CALI_DEBUG("post_nat seen_mark 0x%x", seen_mark);
+        
 	switch (nat_res) {
 		case NAT_ALLOW:
 			goto allow;
@@ -1270,6 +1289,7 @@ encap_allow:
 			.mark = seen_mark,
 		};
 		fwd_fib_set(&fwd, fib);
+		CALI_DEBUG("post_nat_allow fib %d mark 0x%x", fib, fwd.mark);
 		return fwd;
 	}
 
@@ -1351,16 +1371,29 @@ deny:
 
 static CALI_BPF_INLINE void update_fib_mark(struct cali_tc_state *state, bool* fib, __u32 *seen_mark)
 {
-	if (CALI_F_FROM_WEP && (state->flags & CALI_ST_NAT_OUTGOING)) {
+	if (CALI_F_FROM_WEP) {
+		if (state->flags & CALI_ST_NAT_OUTGOING) {
 		// We are going to SNAT this traffic, using iptables SNAT so set the mark
 		// to trigger that and leave the fib lookup disabled.
 		*fib = false;
 		*seen_mark = CALI_SKB_MARK_NAT_OUT;
+		}
+	       if (state->flags & CALI_ST_TCP_RST) {
+		       // TCP RST packets must go to the host stack for processing.
+		       *fib = false;
+		       *seen_mark = CALI_SKB_MARK_RST;
+	       }	
+
 	} else {
 		if (state->flags & CALI_ST_SKIP_FIB) {
 			*fib = false;
 			*seen_mark = CALI_SKB_MARK_SKIP_FIB;
 		}
+	       if (state->flags & CALI_ST_TCP_RST) {
+		       // TCP RST packets must go to the host stack for processing.
+		       *fib = false;
+		       *seen_mark = CALI_SKB_MARK_RST;
+	       }	
 	}
 }
 
@@ -1593,6 +1626,7 @@ static CALI_BPF_INLINE struct fwd calico_tc_skb_accepted(struct cali_tc_ctx *ctx
 	CALI_DEBUG("ct_rc=%d", ct_rc);
 	CALI_DEBUG("ct_related=%d", ct_related);
 	CALI_DEBUG("mark=0x%x", seen_mark);
+	CALI_DEBUG("ct_result is to workload=%d", ct_result_is_to_workload(state->ct_result.rc));
 
 	ctx->fwd.reason = CALI_REASON_UNKNOWN;
 
@@ -1601,6 +1635,18 @@ static CALI_BPF_INLINE struct fwd calico_tc_skb_accepted(struct cali_tc_ctx *ctx
 	if (state->ip_proto == IPPROTO_ICMP_46 && !ct_related) {
 		state->dport = 0;
 		state->post_nat_dport = 0;
+	}
+
+	if (ct_result_is_to_workload(state->ct_result.rc)) {
+		CALI_DEBUG("CT result is to workload");
+		struct cali_rt *dest_rt = cali_rt_lookup(&ctx->state->ip_dst);
+		if (dest_rt && !cali_rt_flags_local_workload(dest_rt->flags)) {
+			CALI_DEBUG("No route to " IP_FMT ", dropping", debug_ip(ctx->state->ip_dst));
+			ctx->state->ct_result.ifindex_fwd = CT_INVALID_IFINDEX;
+			CALI_JUMP_TO(ctx, PROG_INDEX_TCP_RST);
+			goto deny;
+			ctx->state->flags |= CALI_ST_TCP_RST;
+		}
 	}
 
 	update_fib_mark(state, &fib, &seen_mark);
@@ -1735,7 +1781,7 @@ static CALI_BPF_INLINE struct fwd calico_tc_skb_accepted(struct cali_tc_ctx *ctx
 		goto do_post_nat;
 
 	case CALI_CT_ESTABLISHED_BYPASS:
-		if (!ct_result_is_syn(state->ct_result.rc)) {
+		if (!ct_result_is_syn(state->ct_result.rc) && seen_mark != CALI_SKB_MARK_RST) {
 			seen_mark = CALI_SKB_MARK_BYPASS;
 			CALI_DEBUG("marking CALI_SKB_MARK_BYPASS");
 		}
@@ -1782,6 +1828,7 @@ icmp_send_reply:
 
 allow:
 do_post_nat:
+	CALI_DEBUG("Fib=%d mark=0x%x", fib, seen_mark);
 	return post_nat(ctx, nat_res, fib, seen_mark, is_dnat);
 
 deny:
@@ -1927,6 +1974,43 @@ deny:
 	return TC_ACT_SHOT;
 }
 
+SEC("tc")
+int calico_tc_skb_send_tcp_rst(struct __sk_buff *skb)
+{
+#ifndef IPVER6
+	/* Initialise the context, which is stored on the stack, and the state, which
+	 * we use to pass data from one program to the next via tail calls. */
+	DECLARE_TC_CTX(_ctx,
+		.skb = skb,
+		.fwd = {
+			.res = TC_ACT_UNSPEC,
+			.reason = CALI_REASON_UNKNOWN,
+		},
+	);
+	struct cali_tc_ctx *ctx = &_ctx;
+
+	CALI_DEBUG("Entering calico_tc_skb_send_tcp_rst");
+	if (tcp_v4_rst(ctx)) {
+		ctx->fwd.res = TC_ACT_SHOT;
+	} else {
+		//ctx->fwd.res = CALI_RES_REDIR_BACK;
+		ctx->fwd.mark = CALI_SKB_MARK_BYPASS_FWD;
+		fwd_fib_set(&ctx->fwd, true);
+		fwd_fib_set_flags(&ctx->fwd, 0);
+	}
+
+	if (skb_refresh_validate_ptrs(ctx, TCP_SIZE)) {
+		deny_reason(ctx, CALI_REASON_SHORT);
+		CALI_DEBUG("Too short");
+		goto deny;
+	}
+	tc_state_fill_from_iphdr(ctx);
+	return forward_or_drop(ctx);
+deny:
+	return TC_ACT_SHOT;
+#endif
+	return TC_ACT_SHOT;
+}
 
 SEC("tc")
 int calico_tc_skb_send_icmp_replies(struct __sk_buff *skb)

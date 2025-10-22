@@ -75,6 +75,7 @@ const (
 	// ScanVerdictDelete means entry should be deleted
 	ScanVerdictDelete
 	ScanVerdictDeleteImmediate // Delete without adding to cleanup map
+	ScanVerdictSendRST
 )
 
 const cleanupBatchSize int = 1000

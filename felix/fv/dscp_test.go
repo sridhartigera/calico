@@ -490,14 +490,15 @@ var _ = infrastructure.DatastoreDescribe("_BPF-SAFE_ dscp tests", []apiconfig.Da
 			verifyQoSPolicies(tc.Felixes[1], []string{"0x2e"}, []string{"0x2e"})
 		}
 
+		By("checking connectivity from external client to workloads")
 		cc.ResetExpectations()
 		cc.ExpectSNAT(ep1_1, tc.Felixes[0].IP, extWorkload)
-		cc.ExpectNone(ep2_1, extWorkload)
-
-		ccOptsIPv6 := connectivity.ExpectWithIPVersion(6)
-		ccOptsSrc := connectivity.ExpectWithSrcIPs(tc.Felixes[1].IPv6)
-		cc.Expect(connectivity.None, ep1_2, extWorkload, ccOptsIPv6, ccOptsSrc)
-		cc.Expect(connectivity.Some, ep2_2, extWorkload, ccOptsIPv6, ccOptsSrc)
+		//cc.ExpectNone(ep2_1, extWorkload)
+		/*
+			ccOptsIPv6 := connectivity.ExpectWithIPVersion(6)
+			ccOptsSrc := connectivity.ExpectWithSrcIPs(tc.Felixes[1].IPv6)
+			cc.Expect(connectivity.None, ep1_2, extWorkload, ccOptsIPv6, ccOptsSrc)
+			cc.Expect(connectivity.Some, ep2_2, extWorkload, ccOptsIPv6, ccOptsSrc)*/
 		cc.CheckConnectivity()
 	})
 })

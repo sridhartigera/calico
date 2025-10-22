@@ -16,6 +16,7 @@ package conntrack
 
 import (
 	"net"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,6 +27,7 @@ import (
 	v3 "github.com/projectcalico/calico/felix/bpf/conntrack/v3"
 	"github.com/projectcalico/calico/felix/bpf/maps"
 	"github.com/projectcalico/calico/felix/timeshim"
+	"github.com/projectcalico/calico/libcalico-go/lib/set"
 )
 
 var (
@@ -52,6 +54,63 @@ func init() {
 	prometheus.MustRegister(conntrackCountersExpired)
 	prometheus.MustRegister(conntrackGaugeStaleNAT)
 	prometheus.MustRegister(conntrackCounterStaleNAT)
+}
+
+type WorkloadRemoveScanner struct {
+	mutex     sync.Mutex
+	cidrs     set.Set[string]
+	cidrsCopy set.Set[string]
+	ipCh      chan string
+}
+
+func NewWorkloadRemoveScanner(ipCh chan string) *WorkloadRemoveScanner {
+	wrs := &WorkloadRemoveScanner{
+		cidrs:     set.New[string](),
+		cidrsCopy: set.New[string](),
+		ipCh:      ipCh,
+	}
+	go wrs.run()
+	return wrs
+}
+
+func (w *WorkloadRemoveScanner) run() {
+	for {
+		ip, ok := <-w.ipCh
+		if !ok {
+			return
+		}
+		w.mutex.Lock()
+		defer w.mutex.Unlock()
+		log.Infof("Noted workload IP removal: %s", ip)
+		w.cidrs.Add(ip)
+	}
+}
+
+func (w *WorkloadRemoveScanner) IterationStart() {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	w.cidrsCopy = w.cidrs.Copy()
+	w.cidrs = set.New[string]()
+	log.Infof("WorkloadRemoveScanner starting iteration with %s IPs to check", w.cidrsCopy.String())
+}
+
+// IterationEnd satisfies EntryScannerSynced
+func (w *WorkloadRemoveScanner) IterationEnd() {
+	w.mutex.Lock()
+	w.cidrsCopy = set.New[string]()
+	w.mutex.Unlock()
+}
+
+func (w *WorkloadRemoveScanner) Check(ctKey KeyInterface, ctVal ValueInterface, get EntryGet) (ScanVerdict, int64) {
+	srcIP := ctKey.AddrA().String()
+	dstIP := ctKey.AddrB().String()
+	if ctKey.Proto() == ProtoTCP && ctVal.Data().Established() &&
+		(w.cidrsCopy.Contains(srcIP) || w.cidrsCopy.Contains(dstIP)) {
+		log.WithField("key", ctKey).Debug("Marking conntrack entry for sending RST due to workload removal")
+		// We found a conntrack entry that has the workload IP as source or
+		return ScanVerdictSendRST, ctVal.LastSeen()
+	}
+	return ScanVerdictOK, ctVal.LastSeen()
 }
 
 type LivenessScanner struct {

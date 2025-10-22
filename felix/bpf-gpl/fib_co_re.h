@@ -206,7 +206,7 @@ skip_redir_ifindex:
 			 */
 			struct cali_rt *dest_rt = cali_rt_lookup(&ctx->state->ip_dst);
 			if (dest_rt == NULL) {
-				CALI_DEBUG("No route for " IP_FMT " at vxlan device", &ctx->state->ip_dst);
+				CALI_DEBUG("No route1 for " IP_FMT " at vxlan device", &ctx->state->ip_dst);
 				goto deny;
 			}
 			if (!cali_rt_is_vxlan(dest_rt)) {
@@ -488,6 +488,8 @@ skip_fib:
 			ctx->fwd.mark |= CALI_SKB_MARK_RELATED_RESOLVED;
 		}
 
+		CALI_DEBUG("Src IP " IP_FMT " dst IP " IP_FMT,
+				debug_ip(ctx->state->ip_src), debug_ip(ctx->state->ip_dst));
 		CALI_DEBUG("Traffic is towards host namespace, marking with 0x%x.", ctx->fwd.mark);
 
 		/* FIXME: this ignores the mask that we should be using.
