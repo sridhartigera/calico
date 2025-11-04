@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ut
+package ut_test
 
 import (
 	"encoding/binary"
@@ -60,7 +60,7 @@ func newBPFTestEpMgr(
 	bpfmaps *bpfmap.Maps,
 	workloadIfaceRegex *regexp.Regexp,
 ) (linux.ManagerWithHEPUpdate, error) {
-	return linux.NewBPFEndpointManager(nil, config, bpfmaps, true, workloadIfaceRegex, idalloc.New(), idalloc.New(),
+	return linux.NewBPFEndpointManager(nil, config, bpfmaps, workloadIfaceRegex, idalloc.New(), idalloc.New(),
 		rules.NewRenderer(rules.Config{
 			BPFEnabled:             true,
 			IPIPEnabled:            true,
@@ -141,9 +141,9 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 		err = bpfEpMgr.CompleteDeferredWork()
 		Expect(err).NotTo(HaveOccurred())
 
-		programsCount := 14
+		programsCount := 15
 		if ipv6Enabled {
-			programsCount = 27
+			programsCount = 28
 		}
 		Expect(programs.Count()).To(Equal(programsCount))
 		at := programs.Programs()
@@ -152,7 +152,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 			Family:     4,
 			Type:       tcdefs.EpTypeHost,
 			LogLevel:   loglevel,
-			FIB:        true,
 			ToHostDrop: false,
 			DSR:        false}))
 		Expect(at).To(HaveKey(hook.AttachType{
@@ -160,7 +159,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 			Family:     4,
 			Type:       tcdefs.EpTypeHost,
 			LogLevel:   loglevel,
-			FIB:        true,
 			ToHostDrop: false,
 			DSR:        false}))
 		Expect(at).NotTo(HaveKey(hook.AttachType{
@@ -168,7 +166,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 			Family:     6,
 			Type:       tcdefs.EpTypeHost,
 			LogLevel:   loglevel,
-			FIB:        true,
 			ToHostDrop: false,
 			DSR:        false}))
 		Expect(at).NotTo(HaveKey(hook.AttachType{
@@ -176,7 +173,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 			Family:     6,
 			Type:       tcdefs.EpTypeHost,
 			LogLevel:   loglevel,
-			FIB:        true,
 			ToHostDrop: false,
 			DSR:        false}))
 
@@ -197,7 +193,7 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 			bpfEpMgr.OnUpdate(&proto.HostMetadataV6Update{Hostname: "uthost", Ipv6Addr: "1::4"})
 			err = bpfEpMgr.CompleteDeferredWork()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(programs.Count()).To(Equal(52))
+			Expect(programs.Count()).To(Equal(54))
 
 			at := programs.Programs()
 
@@ -206,7 +202,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 				Family:     4,
 				Type:       tcdefs.EpTypeHost,
 				LogLevel:   loglevel,
-				FIB:        true,
 				ToHostDrop: false,
 				DSR:        false}))
 			Expect(at).To(HaveKey(hook.AttachType{
@@ -214,7 +209,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 				Family:     4,
 				Type:       tcdefs.EpTypeHost,
 				LogLevel:   loglevel,
-				FIB:        true,
 				ToHostDrop: false,
 				DSR:        false}))
 			Expect(at).To(HaveKey(hook.AttachType{
@@ -222,7 +216,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 				Family:     6,
 				Type:       tcdefs.EpTypeHost,
 				LogLevel:   loglevel,
-				FIB:        true,
 				ToHostDrop: false,
 				DSR:        false}))
 			Expect(at).To(HaveKey(hook.AttachType{
@@ -230,7 +223,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 				Family:     6,
 				Type:       tcdefs.EpTypeHost,
 				LogLevel:   loglevel,
-				FIB:        true,
 				ToHostDrop: false,
 				DSR:        false}))
 
@@ -337,10 +329,10 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 		err := bpfEpMgr.CompleteDeferredWork()
 		Expect(err).NotTo(HaveOccurred())
 
-		programCount := 14
+		programCount := 15
 		jumpMapLen := 2
 		if ipv6Enabled {
-			programCount = 52
+			programCount = 54
 			jumpMapLen = 8
 		}
 		Expect(programs.Count()).To(Equal(programCount))
@@ -358,9 +350,9 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 		err = bpfEpMgr.CompleteDeferredWork()
 		Expect(err).NotTo(HaveOccurred())
 
-		programsCount := 27
+		programsCount := 28
 		if ipv6Enabled {
-			programsCount = 52
+			programsCount = 54
 		}
 		Expect(programs.Count()).To(Equal(programsCount))
 
@@ -370,7 +362,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 			Family:     4,
 			Type:       tcdefs.EpTypeWorkload,
 			LogLevel:   loglevel,
-			FIB:        true,
 			ToHostDrop: false,
 			DSR:        false}))
 		Expect(at).To(HaveKey(hook.AttachType{
@@ -378,7 +369,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 			Family:     4,
 			Type:       tcdefs.EpTypeWorkload,
 			LogLevel:   loglevel,
-			FIB:        true,
 			ToHostDrop: false,
 			DSR:        false}))
 		if ipv6Enabled {
@@ -387,7 +377,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 				Family:     6,
 				Type:       tcdefs.EpTypeWorkload,
 				LogLevel:   loglevel,
-				FIB:        true,
 				ToHostDrop: false,
 				DSR:        false}))
 			Expect(at).To(HaveKey(hook.AttachType{
@@ -395,7 +384,6 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 				Family:     6,
 				Type:       tcdefs.EpTypeWorkload,
 				LogLevel:   loglevel,
-				FIB:        true,
 				ToHostDrop: false,
 				DSR:        false}))
 		}
@@ -428,11 +416,11 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 		err := bpfEpMgr.CompleteDeferredWork()
 		Expect(err).NotTo(HaveOccurred())
 
-		programsCount := 27
+		programsCount := 28
 		jumpMapLen := 6
 
 		if ipv6Enabled {
-			programsCount = 52
+			programsCount = 54
 			jumpMapLen = 16
 		}
 		Expect(programs.Count()).To(Equal(programsCount))
@@ -593,10 +581,10 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 		err = oldProgs.Open()
 		Expect(err).NotTo(HaveOccurred())
 		pm := jumpMapDump(oldProgs)
-		programsCount := 27
+		programsCount := 28
 		oldPoliciesCount := 4
 		if ipv6Enabled {
-			programsCount = 52
+			programsCount = 54
 			oldPoliciesCount = 12
 		}
 		Expect(pm).To(HaveLen(programsCount))
@@ -632,9 +620,9 @@ func runAttachTest(t *testing.T, ipv6Enabled bool) {
 		err = bpfEpMgr.CompleteDeferredWork()
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(programs.Count()).To(Equal(27))
+		Expect(programs.Count()).To(Equal(28))
 		pm = jumpMapDump(commonMaps.ProgramsMap)
-		Expect(pm).To(HaveLen(27))
+		Expect(pm).To(HaveLen(28))
 
 		pm = jumpMapDump(commonMaps.JumpMap)
 		// We remember the state from above
@@ -810,7 +798,6 @@ func TestAttachWithMultipleWorkloadUpdate(t *testing.T) {
 		Family:     4,
 		Type:       tcdefs.EpTypeWorkload,
 		LogLevel:   loglevel,
-		FIB:        true,
 		ToHostDrop: false,
 		DSR:        false}))
 	Expect(at).To(HaveKey(hook.AttachType{
@@ -818,7 +805,6 @@ func TestAttachWithMultipleWorkloadUpdate(t *testing.T) {
 		Family:     4,
 		Type:       tcdefs.EpTypeWorkload,
 		LogLevel:   loglevel,
-		FIB:        true,
 		ToHostDrop: false,
 		DSR:        false}))
 
@@ -1469,7 +1455,6 @@ func BenchmarkAttachProgram(b *testing.B) {
 		},
 		Type:     tcdefs.EpTypeWorkload,
 		ToOrFrom: tcdefs.FromEp,
-		FIB:      true,
 		HostIPv4: net.IPv4(1, 1, 1, 1),
 		IntfIPv4: net.IPv4(1, 1, 1, 1),
 	}

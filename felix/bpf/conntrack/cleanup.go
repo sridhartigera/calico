@@ -24,7 +24,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/projectcalico/calico/felix/bpf/conntrack/timeouts"
-	v3 "github.com/projectcalico/calico/felix/bpf/conntrack/v3"
+	v4 "github.com/projectcalico/calico/felix/bpf/conntrack/v4"
 	"github.com/projectcalico/calico/felix/bpf/maps"
 	"github.com/projectcalico/calico/felix/timeshim"
 	"github.com/projectcalico/calico/libcalico-go/lib/set"
@@ -297,7 +297,7 @@ again:
 			port uint16
 		)
 
-		if v.Flags()&v3.FlagSrcDstBA != 0 {
+		if v.Flags()&v4.FlagSrcDstBA != 0 {
 			ip = k.AddrA()
 			port = k.PortA()
 		} else {
@@ -307,7 +307,7 @@ again:
 
 		if sns.natChecker.ConntrackDestIsService(ip, port, proto) {
 			log.WithField("key", k).Debugf("TypeNormal to UDP service IP is stale")
-			return ScanVerdictDelete, lastSeen
+			return ScanVerdictDeleteImmediate, lastSeen
 		}
 
 	case TypeNATReverse:
