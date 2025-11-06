@@ -27,6 +27,7 @@ import (
 
 	"github.com/projectcalico/calico/felix/bpf/conntrack/cleanupv1"
 	"github.com/projectcalico/calico/felix/bpf/conntrack/timeouts"
+	v4 "github.com/projectcalico/calico/felix/bpf/conntrack/v4"
 	"github.com/projectcalico/calico/felix/bpf/maps"
 	"github.com/projectcalico/calico/felix/cachingmap"
 	"github.com/projectcalico/calico/felix/jitter"
@@ -247,7 +248,15 @@ func (s *Scanner) Scan() {
 			verdict, ts := scanner.Check(ctKey, ctVal, s.get)
 			switch verdict {
 			case ScanVerdictOK:
+				continue
+			case ScanVerdictSendRST:
 				// Entry is fine, continue to next scanner.
+				flags := ctVal.Flags()
+				flags |= v4.FlagSendRST
+
+				newVal := v4.NewValueNormal(time.Duration(ctVal.LastSeen()), flags, ctVal.Data().A2B, ctVal.Data().B2A)
+				s.ctMap.Update(ctKey.AsBytes(), newVal.AsBytes())
+				log.Infof("Marked conntrack entry to send RST: %v", ctKey)
 				continue
 			case ScanVerdictDelete, ScanVerdictDeleteImmediate:
 				// Entry should be deleted.

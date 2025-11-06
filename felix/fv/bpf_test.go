@@ -3421,9 +3421,7 @@ func describeBPFTests(opts ...bpfTestOpt) bool {
 						By("removing the old workload from infra")
 						w[0][0].RemoveFromInfra(infra)
 
-						By("Testing connectivity continues")
-						fmt.Println("Waiting for 200s")
-						time.Sleep(50 * time.Second)
+						By("Sridhar Testing connectivity continues")
 						tcpdump := tc.Felixes[1].AttachTCPDump("eth0")
 						tcpdump.SetLogEnabled(true)
 						tcpdump.Start()

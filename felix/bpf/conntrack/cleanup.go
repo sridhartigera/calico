@@ -80,18 +80,19 @@ func (w *WorkloadRemoveScanner) run() {
 			return
 		}
 		w.mutex.Lock()
-		defer w.mutex.Unlock()
 		log.Infof("Noted workload IP removal: %s", ip)
 		w.cidrs.Add(ip)
+		w.mutex.Unlock()
 	}
 }
 
 func (w *WorkloadRemoveScanner) IterationStart() {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
+	log.Infof("WorkloadRemoveScanner starting iteration with %s IPs to check", w.cidrs.String())
 	w.cidrsCopy = w.cidrs.Copy()
 	w.cidrs = set.New[string]()
-	log.Infof("WorkloadRemoveScanner starting iteration with %s IPs to check", w.cidrsCopy.String())
+	log.Infof("WorkloadRemoveScanner starting iteration with %s copy IPs to check", w.cidrsCopy.String())
 }
 
 // IterationEnd satisfies EntryScannerSynced
