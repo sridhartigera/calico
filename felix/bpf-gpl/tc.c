@@ -432,17 +432,11 @@ static CALI_BPF_INLINE void calico_tc_process_ct_lookup(struct cali_tc_ctx *ctx)
 			ctx->state->flags |= CALI_ST_SKIP_FIB;
 		}
 		CALI_DEBUG("CT Hit");
-
-		if (ctx->state->ip_proto == IPPROTO_TCP) {
-			struct cali_rt *dst_rt = cali_rt_lookup(&ctx->state->ip_dst);
-			if (dst_rt) {
-				CALI_DEBUG("CT Hit dest route flags 0x%x", dst_rt->next_hop);
-			}
-			if (dst_rt && cali_rt_flags_is_in_pool(dst_rt->flags) &&
-					!cali_rt_is_local(dst_rt) &&
-					!cali_rt_is_workload(dst_rt)) {
-				CALI_DEBUG("Hit the default route to a remote IP " IP_FMT "", debug_ip(ctx->state->ip_dst));
-			}
+		if (CALI_F_TO_HOST && ctx->state->ct_result.flags & CALI_CT_FLAG_SEND_RESET) {
+			CALI_DEBUG("Sending TCP RST due to CT state");
+			ctx->state->ct_result.ifindex_fwd = CT_INVALID_IFINDEX;
+			CALI_JUMP_TO(ctx, PROG_INDEX_TCP_RST);
+			goto deny;
 		}
 
 		if (ctx->state->ip_proto == IPPROTO_TCP && ct_result_is_syn(ctx->state->ct_result.rc)) {
@@ -1398,22 +1392,11 @@ static CALI_BPF_INLINE void update_fib_mark(struct cali_tc_state *state, bool* f
 		*fib = false;
 		*seen_mark = CALI_SKB_MARK_NAT_OUT;
 		}
-	       if (state->flags & CALI_ST_TCP_RST) {
-		       // TCP RST packets must go to the host stack for processing.
-		       *fib = false;
-		       *seen_mark = CALI_SKB_MARK_RST;
-	       }	
-
 	} else {
 		if (state->flags & CALI_ST_SKIP_FIB) {
 			*fib = false;
 			*seen_mark = CALI_SKB_MARK_SKIP_FIB;
 		}
-	       if (state->flags & CALI_ST_TCP_RST) {
-		       // TCP RST packets must go to the host stack for processing.
-		       *fib = false;
-		       *seen_mark = CALI_SKB_MARK_RST;
-	       }	
 	}
 }
 
@@ -1660,6 +1643,7 @@ static CALI_BPF_INLINE struct fwd calico_tc_skb_accepted(struct cali_tc_ctx *ctx
 		state->post_nat_dport = 0;
 	}
 
+#if 0
 	if (ct_result_is_to_workload(state->ct_result.rc)) {
 		CALI_DEBUG("CT result is to workload");
 		struct cali_rt *dest_rt = cali_rt_lookup(&ctx->state->ip_dst);
@@ -1671,6 +1655,7 @@ static CALI_BPF_INLINE struct fwd calico_tc_skb_accepted(struct cali_tc_ctx *ctx
 			ctx->state->flags |= CALI_ST_TCP_RST;
 		}
 	}
+#endif
 
 	update_fib_mark(state, &fib, &seen_mark);
 
@@ -2017,9 +2002,9 @@ int calico_tc_skb_send_tcp_rst(struct __sk_buff *skb)
 		ctx->fwd.res = TC_ACT_SHOT;
 	} else {
 		//ctx->fwd.res = CALI_RES_REDIR_BACK;
-		ctx->fwd.mark = CALI_SKB_MARK_BYPASS_FWD;
+		//ctx->fwd.mark = CALI_SKB_MARK_BYPASS_FWD;
 		fwd_fib_set(&ctx->fwd, true);
-		fwd_fib_set_flags(&ctx->fwd, 0);
+		fwd_fib_set_flags(&ctx->fwd, BPF_FIB_LOOKUP_OUTPUT);
 	}
 
 	if (skb_refresh_validate_ptrs(ctx, TCP_SIZE)) {

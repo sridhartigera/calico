@@ -222,6 +222,7 @@ skip_redir_ifindex:
 			}
 		}
 	} else if (CALI_F_TUNNEL && CALI_F_TO_HEP) {
+		CALI_DEBUG("Packet to tunnel device on HEP egress");
 		if (!(ctx->skb->mark & CALI_SKB_MARK_SEEN) ||
 			!skb_mark_equals(ctx->skb, CALI_SKB_MARK_TUNNEL_KEY_SET, CALI_SKB_MARK_TUNNEL_KEY_SET)) {
 			/* packet to vxlan from the host, needs to set tunnel key. Either
