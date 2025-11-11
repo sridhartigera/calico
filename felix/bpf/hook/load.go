@@ -15,7 +15,6 @@
 package hook
 
 import (
-	"strings"
 	"sync"
 
 	tcdefs "github.com/projectcalico/calico/felix/bpf/tc/defs"
@@ -147,47 +146,43 @@ func SetObjectFile(at AttachType, file string) {
 
 func initObjectFiles() {
 	for _, family := range []int{4, 6} {
-		for _, logLevel := range []string{"off", "debug"} {
-			for _, epToHostDrop := range []bool{false, true} {
-				epToHostDrop := epToHostDrop
-				epTypes := []tcdefs.EndpointType{
-					tcdefs.EpTypeWorkload,
-					tcdefs.EpTypeHost,
-					tcdefs.EpTypeIPIP,
-					tcdefs.EpTypeL3Device,
-					tcdefs.EpTypeNAT,
-					tcdefs.EpTypeLO,
-					tcdefs.EpTypeVXLAN,
-				}
-				for _, epType := range epTypes {
-					epType := epType
-					for _, hook := range []Hook{Ingress, Egress} {
-						hook := hook
-						for _, dsr := range []bool{false, true} {
-							toOrFrom := tcdefs.ToEp
-							if hook == Ingress {
-								toOrFrom = tcdefs.FromEp
-							}
-
-							attachType := AttachType{
-								Family:     family,
-								Type:       epType,
-								Hook:       hook,
-								ToHostDrop: epToHostDrop,
-								DSR:        dsr,
-								LogLevel:   logLevel,
-							}
-							filename := tcdefs.ProgFilename(
-								family,
-								epType,
-								toOrFrom,
-								epToHostDrop,
-								dsr,
-								logLevel,
-								bpfutils.BTFEnabled,
-							)
-							SetObjectFile(attachType, filename)
+		for _, epToHostDrop := range []bool{false, true} {
+			epToHostDrop := epToHostDrop
+			epTypes := []tcdefs.EndpointType{
+				tcdefs.EpTypeWorkload,
+				tcdefs.EpTypeHost,
+				tcdefs.EpTypeIPIP,
+				tcdefs.EpTypeL3Device,
+				tcdefs.EpTypeNAT,
+				tcdefs.EpTypeLO,
+				tcdefs.EpTypeVXLAN,
+			}
+			for _, epType := range epTypes {
+				epType := epType
+				for _, hook := range []Hook{Ingress, Egress} {
+					hook := hook
+					for _, dsr := range []bool{false, true} {
+						toOrFrom := tcdefs.ToEp
+						if hook == Ingress {
+							toOrFrom = tcdefs.FromEp
 						}
+
+						attachType := AttachType{
+							Family:     family,
+							Type:       epType,
+							Hook:       hook,
+							ToHostDrop: epToHostDrop,
+							DSR:        dsr,
+						}
+						filename := tcdefs.ProgFilename(
+							family,
+							epType,
+							toOrFrom,
+							epToHostDrop,
+							dsr,
+							bpfutils.BTFEnabled,
+						)
+						SetObjectFile(attachType, filename)
 					}
 				}
 			}
@@ -195,22 +190,15 @@ func initObjectFiles() {
 	}
 
 	for _, family := range []int{4, 6} {
-		for _, logLevel := range []string{"off", "debug"} {
-			l := strings.ToLower(logLevel)
-			if l == "off" {
-				l = "no_log"
-			}
-			filename := "xdp_" + l + ".o"
-			if family == 6 {
-				filename = "xdp_" + l + "_co-re_v6.o"
-			}
-
-			SetObjectFile(AttachType{
-				Family:   family,
-				Hook:     XDP,
-				LogLevel: logLevel,
-			}, filename)
+		filename := "xdp.o"
+		if family == 6 {
+			filename = "xdp" + "_co-re_v6.o"
 		}
+
+		SetObjectFile(AttachType{
+			Family: family,
+			Hook:   XDP,
+		}, filename)
 	}
 }
 

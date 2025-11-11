@@ -67,12 +67,6 @@ static CALI_BPF_INLINE void fill_ct_key(struct calico_ct_key *k, bool sltd, __u8
 
 #define ct_result_np_node(res)		((res).flags & CALI_CT_FLAG_NP_FWD)
 
-static CALI_BPF_INLINE void dump_ct_key(struct cali_tc_ctx *ctx, struct calico_ct_key *k)
-{
-	CALI_VERB("CT-ALL   key A=" IP_FMT ":%d proto=%d", debug_ip(k->addr_a), k->port_a, (int)k->protocol);
-	CALI_VERB("CT-ALL   key B=" IP_FMT ":%d size=%d", debug_ip(k->addr_b), k->port_b, (int)sizeof(struct calico_ct_key));
-}
-
 static CALI_BPF_INLINE int calico_ct_v4_create_tracking(struct cali_tc_ctx *ctx,
 							struct ct_create_ctx *ct_ctx,
 							struct calico_ct_key *k)
@@ -182,8 +176,6 @@ create:
 		dst_to_src = &ct_value.a_to_b;
 		ct_value_set_flags(&ct_value, CALI_CT_FLAG_BA);
 	}
-
-	dump_ct_key(ctx, k);
 
 	src_to_dst->seqno = seq;
 	src_to_dst->syn_seen = syn;

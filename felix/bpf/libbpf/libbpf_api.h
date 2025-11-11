@@ -451,6 +451,11 @@ void bpf_ctlb_set_globals(struct bpf_map *map, uint udp_not_seen_timeo, bool exc
 	set_errno(bpf_map__set_initial_value(map, (void*)(&data), sizeof(data)));
 }
 
+void bpf_set_log_level_debug(struct bpf_map *map, bool debug)
+{
+	set_errno(bpf_map__set_initial_value(map, (void*)(&debug), sizeof(debug)));
+}
+
 void bpf_xdp_set_globals(struct bpf_map *map, char *iface_name, uint *jumps, uint *jumpsV6)
 {
 	struct cali_xdp_preamble_globals data = {

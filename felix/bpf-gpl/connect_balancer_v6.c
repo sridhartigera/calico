@@ -16,6 +16,7 @@
 #include "globals.h"
 #include "ctlb.h"
 
+const volatile bool cali_log_level_debug;
 #define CALI_LOG(fmt, ...) bpf_log("CTLB-V6---------: " fmt, ## __VA_ARGS__)
 
 #include "log.h"

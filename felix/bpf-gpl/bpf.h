@@ -292,6 +292,7 @@ extern const volatile struct cali_ct_cleanup_globals __globals;
 #else
 extern const volatile struct cali_tc_preamble_globals __globals;
 #endif
+extern const volatile bool cali_log_level_debug;
 
 #define CALI_CONFIGURABLE(name) ctx->globals->data.name
 #ifdef IPVER6
@@ -320,6 +321,7 @@ extern const volatile struct cali_tc_preamble_globals __globals;
 #define PROFILING	CALI_CONFIGURABLE(profiling)
 #define OVERLAY_TUNNEL_ID CALI_CONFIGURABLE(overlay_tunnel_id)
 #define EGRESS_DSCP CALI_CONFIGURABLE(dscp)
+#define LOG_LEVEL_DEBUG cali_log_level_debug
 
 #define FLOWLOGS_ENABLED (GLOBAL_FLAGS & CALI_GLOBALS_FLOWLOGS_ENABLED)
 #define INGRESS_PACKET_RATE_CONFIGURED (GLOBAL_FLAGS & CALI_GLOBALS_INGRESS_PACKET_RATE_CONFIGURED)

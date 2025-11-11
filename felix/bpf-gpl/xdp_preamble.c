@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <linux/if_ether.h>
 
-#include "skb.h"
+//#include "skb.h"
 #include "bpf.h"
 #include "types.h"
 #include "globals.h"
@@ -15,6 +15,7 @@
 #include "log.h"
 
 const volatile struct cali_xdp_preamble_globals __globals;
+const volatile bool cali_log_level_debug;
 
 static CALI_BPF_INLINE __u16 parse_eth_hdr(struct xdp_md *xdp)
 {

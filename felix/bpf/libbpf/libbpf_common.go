@@ -22,6 +22,8 @@ type GlobalData interface {
 	Set(m *Map) error
 }
 
+type LogLevelDebug bool
+
 type TcGlobalData struct {
 	IfaceName       string
 	HostIPv4        [16]byte

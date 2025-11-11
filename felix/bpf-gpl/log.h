@@ -40,9 +40,6 @@
 #define CALI_LOG bpf_log
 #endif
 
-#define CALI_INFO_NO_FLAG(fmt, ...)  CALI_LOG_IF(CALI_LOG_LEVEL_INFO, fmt, ## __VA_ARGS__)
-#define CALI_DEBUG_NO_FLAG(fmt, ...) CALI_LOG_IF(CALI_LOG_LEVEL_DEBUG, fmt, ## __VA_ARGS__)
-
 #define CALI_INFO(fmt, ...) \
 	__CALI_LOG_IF(CALI_LOG_LEVEL_INFO, fmt, ## __VA_ARGS__)
 #define CALI_DEBUG(fmt, ...) \
@@ -51,12 +48,12 @@
 	__CALI_LOG_IF(CALI_LOG_LEVEL_VERB, fmt, ## __VA_ARGS__)
 
 #define __CALI_LOG_IF(level, fmt, ...) do { \
-	if (CALI_LOG_LEVEL >= (level))    \
+	if (level == CALI_LOG_LEVEL_VERB || (level == CALI_LOG_LEVEL_DEBUG && LOG_LEVEL_DEBUG))    \
 		CALI_LOG(fmt, ## __VA_ARGS__);          \
 } while (0)
 
 #define CALI_LOG_IF(level, fmt, ...) do { \
-	if (CALI_LOG_LEVEL >= (level))    \
+	if (level == CALI_LOG_LEVEL_INFO || (level == CALI_LOG_LEVEL_DEBUG && LOG_LEVEL_DEBUG))    \
 		bpf_log(fmt, ## __VA_ARGS__);          \
 } while (0)
 

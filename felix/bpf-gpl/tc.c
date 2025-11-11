@@ -19,6 +19,10 @@
 
 #include "bpf.h"
 
+#ifndef UNITTEST
+const volatile bool cali_log_level_debug;
+#endif
+
 #define CALI_IFACE_LOG(fmt, ...) bpf_log("%s" fmt, ctx->globals->data.iface_name, ## __VA_ARGS__)
 
 #define CALI_LOG(fmt, ...) do { \

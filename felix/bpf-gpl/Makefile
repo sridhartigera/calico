@@ -170,9 +170,9 @@ test%.ll: tc.c tc.d calculate-flags
 	$(COMPILE)
 test%_v6.ll: tc.c tc_v6.d calculate-flags
 	$(COMPILE)
-xdp%.ll: xdp.c xdp.d calculate-flags
+xdp.ll: xdp.c xdp.d calculate-flags
 	$(COMPILE)
-xdp%_v6.ll: xdp.c xdp_v6.d calculate-flags
+xdp_v6.ll: xdp.c xdp_v6.d calculate-flags
 	$(COMPILE)
 test_xdp%.ll: xdp.c xdp.d calculate-flags
 	$(COMPILE)
@@ -200,7 +200,9 @@ bin/from%.o: from%.ll | bin
 	$(LINK)
 bin/test%.o: test%.ll | bin
 	$(LINK)
-bin/xdp%.o: xdp%.ll | bin
+bin/xdp.o: xdp.ll | bin
+	$(LINK)
+bin/xdp%_v6.o: xdp_v6.ll | bin
 	$(LINK)
 ut/%.o: ut/%.ll
 	$(LINK)

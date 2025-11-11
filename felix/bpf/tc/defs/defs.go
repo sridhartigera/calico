@@ -16,7 +16,6 @@ package tcdefs
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -150,7 +149,7 @@ func SectionName(endpointType EndpointType, fromOrTo ToOrFromEp) string {
 	return fmt.Sprintf("calico_%s_%s_ep", fromOrTo, endpointType)
 }
 
-func ProgFilename(ipVer int, epType EndpointType, toOrFrom ToOrFromEp, epToHostDrop, dsr bool, logLevel string, btf bool) string {
+func ProgFilename(ipVer int, epType EndpointType, toOrFrom ToOrFromEp, epToHostDrop, dsr, btf bool) string {
 	if epToHostDrop && (epType != EpTypeWorkload || toOrFrom == ToEp) {
 		// epToHostDrop only makes sense in the from-workload program.
 		logrus.Debug("Ignoring epToHostDrop, doesn't apply to this target")
@@ -159,15 +158,11 @@ func ProgFilename(ipVer int, epType EndpointType, toOrFrom ToOrFromEp, epToHostD
 
 	var hostDropPart string
 	if epType == EpTypeWorkload && epToHostDrop {
-		hostDropPart = "host_drop_"
+		hostDropPart = "_host_drop"
 	}
 	dsrPart := ""
 	if dsr && ((epType == EpTypeWorkload && toOrFrom == FromEp) || (epType == EpTypeHost)) {
-		dsrPart = "dsr_"
-	}
-	logLevel = strings.ToLower(logLevel)
-	if logLevel == "off" {
-		logLevel = "no_log"
+		dsrPart = "_dsr"
 	}
 	var epTypeShort string
 	switch epType {
@@ -195,7 +190,7 @@ func ProgFilename(ipVer int, epType EndpointType, toOrFrom ToOrFromEp, epToHostD
 		corePart += "_v6"
 	}
 
-	oFileName := fmt.Sprintf("%v_%v_%s%s%v%s.o",
-		toOrFrom, epTypeShort, hostDropPart, dsrPart, logLevel, corePart)
+	oFileName := fmt.Sprintf("%v_%v%s%s%s.o",
+		toOrFrom, epTypeShort, hostDropPart, dsrPart, corePart)
 	return oFileName
 }

@@ -3754,7 +3754,7 @@ func (m *bpfEndpointManager) ensureQdisc(iface string) (bool, error) {
 func (m *bpfEndpointManager) loadTCObj(at hook.AttachType) (hook.Layout, error) {
 	pm := m.commonMaps.ProgramsMap.(*hook.ProgramsMap)
 
-	layout, err := pm.LoadObj(at)
+	layout, err := pm.LoadObj(at, false)
 	if err != nil {
 		return nil, err
 	}
@@ -3764,7 +3764,7 @@ func (m *bpfEndpointManager) loadTCObj(at hook.AttachType) (hook.Layout, error) 
 	}
 
 	at.LogLevel = "off"
-	layoutNoDebug, err := pm.LoadObj(at)
+	layoutNoDebug, err := pm.LoadObj(at, true)
 	if err != nil {
 		return nil, err
 	}
@@ -3780,7 +3780,6 @@ func (m *bpfEndpointManager) ensureProgramLoaded(ap attachPoint, ipFamily proto.
 		at := hook.AttachType{
 			Hook:       aptc.HookName(),
 			Type:       aptc.Type,
-			LogLevel:   aptc.LogLevel,
 			ToHostDrop: aptc.ToHostDrop,
 			DSR:        aptc.DSR,
 		}
@@ -3814,18 +3813,17 @@ func (m *bpfEndpointManager) ensureProgramLoaded(ap attachPoint, ipFamily proto.
 		}
 	} else if apxdp, ok := ap.(*xdp.AttachPoint); ok {
 		at := hook.AttachType{
-			Hook:     hook.XDP,
-			LogLevel: apxdp.LogLevel,
+			Hook: hook.XDP,
 		}
 
 		at.Family = int(ipFamily)
 		pm := m.commonMaps.XDPProgramsMap.(*hook.ProgramsMap)
 		if ipFamily == proto.IPVersion_IPV6 {
-			if apxdp.HookLayoutV6, err = pm.LoadObj(at); err != nil {
+			if apxdp.HookLayoutV6, err = pm.LoadObj(at, apxdp.LogLevel == "debug"); err != nil {
 				return fmt.Errorf("loading generic xdp hook program: %w", err)
 			}
 		} else {
-			if apxdp.HookLayoutV4, err = pm.LoadObj(at); err != nil {
+			if apxdp.HookLayoutV4, err = pm.LoadObj(at, apxdp.LogLevel == "debug"); err != nil {
 				return fmt.Errorf("loading generic xdp hook program: %w", err)
 			}
 		}

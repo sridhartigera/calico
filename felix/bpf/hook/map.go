@@ -132,7 +132,7 @@ func NewXDPProgramsMap() bpfmaps.Map {
 	}
 }
 
-func (pm *ProgramsMap) LoadObj(at AttachType) (Layout, error) {
+func (pm *ProgramsMap) LoadObj(at AttachType, logLevelDebug bool) (Layout, error) {
 	file := ObjectFile(at)
 	if file == "" {
 		return nil, fmt.Errorf("no object for attach type %+v", at)
@@ -150,13 +150,13 @@ func (pm *ProgramsMap) LoadObj(at AttachType) (Layout, error) {
 
 	var err error
 	if pi.layout == nil {
-		la, err := pm.loadObj(at, path.Join(bpfdefs.ObjectDir, file))
+		la, err := pm.loadObj(at, path.Join(bpfdefs.ObjectDir, file), logLevelDebug)
 		if err != nil && strings.Contains(file, "_co-re") {
 			log.WithError(err).Warn("Failed to load CO-RE object, kernel too old? Falling back to non-CO-RE.")
 			file := strings.ReplaceAll(file, "_co-re", "")
 			// Skip trying the same file again, as it will fail with the same error.
 			SetObjectFile(at, file)
-			la, err = pm.loadObj(at, path.Join(bpfdefs.ObjectDir, file))
+			la, err = pm.loadObj(at, path.Join(bpfdefs.ObjectDir, file), logLevelDebug)
 		}
 		if err == nil {
 			log.WithField("layout", la).Debugf("Loaded generic object file %s", file)
@@ -181,7 +181,7 @@ func (pm *ProgramsMap) getOrCreateProgramInfo(at AttachType) *program {
 	return pi
 }
 
-func (pm *ProgramsMap) loadObj(at AttachType, file string) (Layout, error) {
+func (pm *ProgramsMap) loadObj(at AttachType, file string, logLevelDebug bool) (Layout, error) {
 	obj, err := libbpf.OpenObject(file)
 	if err != nil {
 		return nil, fmt.Errorf("file %s: %w", file, err)
@@ -189,10 +189,16 @@ func (pm *ProgramsMap) loadObj(at AttachType, file string) (Layout, error) {
 
 	for m, err := obj.FirstMap(); m != nil && err == nil; m, err = m.NextMap() {
 		mapName := m.Name()
-		if strings.Contains(mapName, ".rodata") {
-			continue
-		}
+		if m.IsMapInternal() {
+			if strings.Contains(mapName, ".rodata") {
+				continue
+			}
 
+			logLevel := libbpf.LogLevelDebug(logLevelDebug)
+			if err := logLevel.Set(m); err != nil {
+				return nil, fmt.Errorf("error setting log level for map %s: %w", mapName, err)
+			}
+		}
 		if err := pm.setMapSize(m); err != nil {
 			return nil, fmt.Errorf("error setting map size %s : %w", mapName, err)
 		}

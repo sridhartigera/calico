@@ -630,6 +630,11 @@ func (c *CTCleanupGlobalData) Set(m *Map) error {
 	return err
 }
 
+func (l *LogLevelDebug) Set(m *Map) error {
+	_, err := C.bpf_set_log_level_debug(m.bpfMap, C.bool(bool(*l)))
+	return err
+}
+
 func (c *CTLBGlobalData) Set(m *Map) error {
 	udpNotSeen := c.UDPNotSeen / time.Second // Convert to seconds
 	_, err := C.bpf_ctlb_set_globals(m.bpfMap, C.uint(udpNotSeen), C.bool(c.ExcludeUDP))

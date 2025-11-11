@@ -14,9 +14,6 @@ if [[ "${filename}" =~ .*debug.* ]]; then
   args+=("-DCALI_LOG_LEVEL=CALI_LOG_LEVEL_DEBUG")
 elif [[ "${filename}" =~ .*no_log.* ]]; then
   args+=("-DCALI_LOG_LEVEL=CALI_LOG_LEVEL_OFF")
-else
-  echo "No log level in filename"
-  exit 1
 fi
 
 if [[ "${filename}" =~ .*host_drop.* ]]; then
