@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"syscall"
 	"unsafe"
 )
 
@@ -27,6 +28,10 @@ var ErrIterationFinished = errors.New("iteration finished")
 // ErrVisitedTooManyKeys is returned by the Iterator's Next() method if it sees
 // many more keys than there should be in the map.
 var ErrVisitedTooManyKeys = errors.New("visited 10x the max size of the map keys")
+
+var BatchOperationsSupported = false
+
+const ENOTSUPP = syscall.Errno(524)
 
 type keysValues struct {
 	keys   []byte
@@ -76,10 +81,11 @@ type Iterator struct {
 	numEntriesVisited int
 
 	// wg is to sync with the syscall executing thread on close
-	wg         sync.WaitGroup
-	keysValues chan keysValues
-	cancelCtx  context.Context
-	cancelCB   context.CancelFunc
+	wg                   sync.WaitGroup
+	keysValues           chan keysValues
+	cancelCtx            context.Context
+	cancelCB             context.CancelFunc
+	batchLookupSupported bool
 }
 
 type MapInfo struct {

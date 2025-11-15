@@ -201,15 +201,16 @@ func NewIterator(mapFD FD, keySize, valueSize, maxEntries int) (*Iterator, error
 	valueStride := align64(valueSize)
 
 	m := &Iterator{
-		mapFD:         mapFD,
-		maxEntries:    maxEntries,
-		keySize:       keySize,
-		valueSize:     valueSize,
-		keyStride:     keyStride,
-		valueStride:   valueStride,
-		keysBufSize:   keyStride * IteratorNumKeys,
-		valuesBufSize: valueStride * IteratorNumKeys,
-		keysValues:    make(chan keysValues),
+		mapFD:                mapFD,
+		maxEntries:           maxEntries,
+		keySize:              keySize,
+		valueSize:            valueSize,
+		keyStride:            keyStride,
+		valueStride:          valueStride,
+		keysBufSize:          keyStride * IteratorNumKeys,
+		valuesBufSize:        valueStride * IteratorNumKeys,
+		keysValues:           make(chan keysValues),
+		batchLookupSupported: true,
 	}
 
 	m.cancelCtx, m.cancelCB = context.WithCancel(context.Background())
@@ -236,6 +237,21 @@ func NewIterator(mapFD FD, keySize, valueSize, maxEntries int) (*Iterator, error
 	return m, nil
 }
 
+func (m *Iterator) slowIter(tokenIn, tokenC unsafe.Pointer) (int, error) {
+	rc := C.bpf_maps_map_load_multi(C.uint(m.mapFD), tokenIn, 16,
+		C.int(m.keySize), m.keysBuff, C.int(m.valueSize), m.valuesBuff)
+	if rc < 0 {
+		return 0, unix.Errno(-rc)
+	}
+	if rc == 0 {
+		return 0, unix.ENOENT
+	}
+	count := int(rc)
+	offset := (count - 1) * m.keySize
+	C.memcpy(tokenC, unsafe.Pointer(uintptr(m.keysBuff)+uintptr(offset)), C.size_t(m.keySize))
+	return count, nil
+}
+
 func (m *Iterator) syscallThread() {
 	defer m.wg.Done()
 
@@ -248,8 +264,18 @@ func (m *Iterator) syscallThread() {
 
 	for {
 		count := IteratorNumKeys
-		_, err := C.bpf_map_batch_lookup(C.int(m.mapFD), tokenIn, tokenC, m.keysBuff, m.valuesBuff,
-			(*C.__u32)(unsafe.Pointer(&count)), 0)
+		var err error
+		if BatchOperationsSupported {
+			_, err = C.bpf_map_batch_lookup(C.int(m.mapFD), tokenIn, tokenC, m.keysBuff, m.valuesBuff,
+				(*C.__u32)(unsafe.Pointer(&count)), 0)
+			if errors.Is(err, ENOTSUPP) {
+				BatchOperationsSupported = false
+			}
+		}
+		if !BatchOperationsSupported {
+			// Batch ops are not supported.
+			count, err = m.slowIter(tokenIn, tokenC)
+		}
 		if err != nil {
 			if errors.Is(err, unix.ENOENT) {
 				if count == 0 {
@@ -270,7 +296,6 @@ func (m *Iterator) syscallThread() {
 			}
 		}
 		tokenIn = tokenC
-
 		bk := C.GoBytes(m.keysBuff, C.int(m.keysBufSize))
 		bv := C.GoBytes(m.valuesBuff, C.int(m.valuesBufSize))
 

@@ -28,6 +28,7 @@ import (
 
 	"github.com/projectcalico/calico/felix/bpf/bpfmap"
 	"github.com/projectcalico/calico/felix/bpf/conntrack"
+	"github.com/projectcalico/calico/felix/bpf/maps"
 	bpfmaps "github.com/projectcalico/calico/felix/bpf/maps"
 )
 
@@ -255,11 +256,17 @@ func TestDeleteDuringIter(t *testing.T) {
 	}()
 	logrus.SetLevel(logrus.InfoLevel)
 
-	testDelDuringIterN(10)
-	testDelDuringIterN(11)
-	testDelDuringIterN(100)
-	testDelDuringIterN(10000)
-	testDelDuringIterN(100000)
+	testFn := func() {
+		testDelDuringIterN(10)
+		testDelDuringIterN(11)
+		testDelDuringIterN(100)
+		testDelDuringIterN(10000)
+		testDelDuringIterN(100000)
+	}
+	maps.BatchOperationsSupported = false
+	testFn()
+	//maps.BatchOperationsSupported = true
+	testFn()
 }
 
 func testDelDuringIterN(numEntries int) {
