@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"sync"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -252,6 +253,22 @@ func (m *Iterator) slowIter(tokenIn, tokenC unsafe.Pointer) (int, error) {
 	return count, nil
 }
 
+func (m *Iterator) isBatchOperationsSupported() bool {
+	return sync.OnceValue(func() bool {
+		token := make([]byte, m.keySize)
+		tokenC := C.CBytes(token)
+		defer C.free(tokenC)
+		tokenIn := unsafe.Pointer(nil)
+		count := 1
+		_, err := C.bpf_map_batch_lookup(C.int(m.mapFD), tokenIn, tokenC, m.keysBuff, m.valuesBuff,
+			(*C.__u32)(unsafe.Pointer(&count)), 0)
+		if errors.Is(err, ENOTSUPP) {
+			return false
+		}
+		return true
+	})()
+}
+
 func (m *Iterator) syscallThread() {
 	defer m.wg.Done()
 
@@ -265,14 +282,10 @@ func (m *Iterator) syscallThread() {
 	for {
 		count := IteratorNumKeys
 		var err error
-		if BatchOperationsSupported {
+		if m.isBatchOperationsSupported() {
 			_, err = C.bpf_map_batch_lookup(C.int(m.mapFD), tokenIn, tokenC, m.keysBuff, m.valuesBuff,
 				(*C.__u32)(unsafe.Pointer(&count)), 0)
-			if errors.Is(err, ENOTSUPP) {
-				BatchOperationsSupported = false
-			}
-		}
-		if !BatchOperationsSupported {
+		} else {
 			// Batch ops are not supported.
 			count, err = m.slowIter(tokenIn, tokenC)
 		}
