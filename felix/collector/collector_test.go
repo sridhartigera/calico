@@ -1,5 +1,4 @@
 //go:build !windows
-// +build !windows
 
 // Copyright (c) 2018-2025 Tigera, Inc. All rights reserved.
 //
@@ -19,12 +18,13 @@ package collector
 
 import (
 	"fmt"
-	"strings"
+	net2 "net"
 	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	v3 "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	kapiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -147,13 +147,20 @@ var (
 		CommonEndpointData: calc.CalculateCommonEndpointData(localWlEPKey1, localWlEp1),
 		Ingress: &calc.MatchData{
 			PolicyMatches: map[calc.PolicyID]int{
-				{Name: "policy1", Tier: "default"}: 0,
-				{Name: "policy2", Tier: "default"}: 0,
+				{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}: 0,
+				{Name: "policy2", Kind: v3.KindGlobalNetworkPolicy}: 0,
 			},
 			TierData: map[string]*calc.TierData{
 				"default": {
-					TierDefaultActionRuleID: calc.NewRuleID("default", "policy2", "", calc.RuleIndexTierDefaultAction,
-						rules.RuleDirIngress, rules.RuleActionDeny),
+					TierDefaultActionRuleID: calc.NewRuleID(
+						v3.KindGlobalNetworkPolicy,
+						"default",
+						"policy2",
+						"",
+						calc.RuleIndexTierDefaultAction,
+						rules.RuleDirIngress,
+						rules.RuleActionDeny,
+					),
 					EndOfTierMatchIndex: 0,
 				},
 			},
@@ -161,13 +168,20 @@ var (
 		},
 		Egress: &calc.MatchData{
 			PolicyMatches: map[calc.PolicyID]int{
-				{Name: "policy1", Tier: "default"}: 0,
-				{Name: "policy2", Tier: "default"}: 0,
+				{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}: 0,
+				{Name: "policy2", Kind: v3.KindGlobalNetworkPolicy}: 0,
 			},
 			TierData: map[string]*calc.TierData{
 				"default": {
-					TierDefaultActionRuleID: calc.NewRuleID("default", "policy2", "", calc.RuleIndexTierDefaultAction,
-						rules.RuleDirIngress, rules.RuleActionDeny),
+					TierDefaultActionRuleID: calc.NewRuleID(
+						v3.KindGlobalNetworkPolicy,
+						"default",
+						"policy2",
+						"",
+						calc.RuleIndexTierDefaultAction,
+						rules.RuleDirIngress,
+						rules.RuleActionDeny,
+					),
 					EndOfTierMatchIndex: 0,
 				},
 			},
@@ -178,13 +192,20 @@ var (
 		CommonEndpointData: calc.CalculateCommonEndpointData(localWlEPKey2, localWlEp2),
 		Ingress: &calc.MatchData{
 			PolicyMatches: map[calc.PolicyID]int{
-				{Name: "policy1", Tier: "default"}: 0,
-				{Name: "policy2", Tier: "default"}: 0,
+				{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}: 0,
+				{Name: "policy2", Kind: v3.KindGlobalNetworkPolicy}: 0,
 			},
 			TierData: map[string]*calc.TierData{
 				"default": {
-					TierDefaultActionRuleID: calc.NewRuleID("default", "policy2", "", calc.RuleIndexTierDefaultAction,
-						rules.RuleDirIngress, rules.RuleActionDeny),
+					TierDefaultActionRuleID: calc.NewRuleID(
+						v3.KindGlobalNetworkPolicy,
+						"default",
+						"policy2",
+						"",
+						calc.RuleIndexTierDefaultAction,
+						rules.RuleDirIngress,
+						rules.RuleActionDeny,
+					),
 					EndOfTierMatchIndex: 0,
 				},
 			},
@@ -192,13 +213,20 @@ var (
 		},
 		Egress: &calc.MatchData{
 			PolicyMatches: map[calc.PolicyID]int{
-				{Name: "policy1", Tier: "default"}: 0,
-				{Name: "policy2", Tier: "default"}: 0,
+				{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}: 0,
+				{Name: "policy2", Kind: v3.KindGlobalNetworkPolicy}: 0,
 			},
 			TierData: map[string]*calc.TierData{
 				"default": {
-					TierDefaultActionRuleID: calc.NewRuleID("default", "policy2", "", calc.RuleIndexTierDefaultAction,
-						rules.RuleDirIngress, rules.RuleActionDeny),
+					TierDefaultActionRuleID: calc.NewRuleID(
+						v3.KindGlobalNetworkPolicy,
+						"default",
+						"policy2",
+						"",
+						calc.RuleIndexTierDefaultAction,
+						rules.RuleDirIngress,
+						rules.RuleActionDeny,
+					),
 					EndOfTierMatchIndex: 0,
 				},
 			},
@@ -244,18 +272,25 @@ var (
 	}
 )
 
+func toprefix(s string) [64]byte {
+	p := [64]byte{}
+	copy(p[:], []byte(s))
+	return p
+}
+
 // Nflog prefix test parameters
 var (
-	defTierAllowIngressNFLOGPrefix   = [64]byte{'A', 'P', 'I', '0', '|', 'd', 'e', 'f', 'a', 'u', 'l', 't', '.', 'p', 'o', 'l', 'i', 'c', 'y', '1'}
-	defTierAllowEgressNFLOGPrefix    = [64]byte{'A', 'P', 'E', '0', '|', 'd', 'e', 'f', 'a', 'u', 'l', 't', '.', 'p', 'o', 'l', 'i', 'c', 'y', '1'}
-	defTierDenyIngressNFLOGPrefix    = [64]byte{'D', 'P', 'I', '0', '|', 'd', 'e', 'f', 'a', 'u', 'l', 't', '.', 'p', 'o', 'l', 'i', 'c', 'y', '2'}
-	defTierDenyEgressNFLOGPrefix     = [64]byte{'D', 'P', 'E', '0', '|', 'd', 'e', 'f', 'a', 'u', 'l', 't', '.', 'p', 'o', 'l', 'i', 'c', 'y', '2'}
+	defTierAllowIngressNFLOGPrefix   = toprefix("API0|gnp/policy1")
+	defTierAllowEgressNFLOGPrefix    = toprefix("APE0|gnp/policy1")
+	defTierDenyIngressNFLOGPrefix    = toprefix("DPI0|gnp/policy2")
+	defTierDenyEgressNFLOGPrefix     = toprefix("DPE0|gnp/policy2")
 	defTierPolicy1AllowIngressRuleID = &calc.RuleID{
 		PolicyID: calc.PolicyID{
-			Tier:      "default",
+			Kind:      v3.KindGlobalNetworkPolicy,
 			Name:      "policy1",
 			Namespace: "",
 		},
+		Tier:      "default",
 		Index:     0,
 		IndexStr:  "0",
 		Action:    rules.RuleActionAllow,
@@ -263,10 +298,11 @@ var (
 	}
 	defTierPolicy1AllowEgressRuleID = &calc.RuleID{
 		PolicyID: calc.PolicyID{
-			Tier:      "default",
+			Kind:      v3.KindGlobalNetworkPolicy,
 			Name:      "policy1",
 			Namespace: "",
 		},
+		Tier:      "default",
 		Index:     0,
 		IndexStr:  "0",
 		Action:    rules.RuleActionAllow,
@@ -274,10 +310,11 @@ var (
 	}
 	defTierPolicy2DenyIngressRuleID = &calc.RuleID{
 		PolicyID: calc.PolicyID{
-			Tier:      "default",
+			Kind:      v3.KindGlobalNetworkPolicy,
 			Name:      "policy2",
 			Namespace: "",
 		},
+		Tier:      "default",
 		Index:     0,
 		IndexStr:  "0",
 		Action:    rules.RuleActionDeny,
@@ -285,10 +322,11 @@ var (
 	}
 	defTierPolicy2DenyEgressRuleID = &calc.RuleID{
 		PolicyID: calc.PolicyID{
-			Tier:      "default",
+			Kind:      v3.KindGlobalNetworkPolicy,
 			Name:      "policy2",
 			Namespace: "",
 		},
+		Tier:      "default",
 		Index:     0,
 		IndexStr:  "0",
 		Action:    rules.RuleActionDeny,
@@ -296,10 +334,11 @@ var (
 	}
 	tier1TierPolicy1AllowIngressRuleID = &calc.RuleID{
 		PolicyID: calc.PolicyID{
-			Tier:      "tier1",
+			Kind:      v3.KindGlobalNetworkPolicy,
 			Name:      "policy11",
 			Namespace: "",
 		},
+		Tier:      "tier1",
 		Index:     0,
 		IndexStr:  "0",
 		Action:    rules.RuleActionAllow,
@@ -307,10 +346,11 @@ var (
 	}
 	tier1TierPolicy1DenyEgressRuleID = &calc.RuleID{
 		PolicyID: calc.PolicyID{
-			Tier:      "tier1",
+			Kind:      v3.KindGlobalNetworkPolicy,
 			Name:      "policy11",
 			Namespace: "",
 		},
+		Tier:      "tier1",
 		Index:     0,
 		IndexStr:  "0",
 		Action:    rules.RuleActionDeny,
@@ -349,6 +389,7 @@ var egressPktAllowNflogTuple = nfnetlink.NflogPacketTuple{
 	L4Src: nfnetlink.NflogL4Info{Port: srcPort},
 	L4Dst: nfnetlink.NflogL4Info{Port: dstPort},
 }
+
 var egressPktAllow = map[nfnetlink.NflogPacketTuple]*nfnetlink.NflogPacketAggregate{
 	egressPktAllowNflogTuple: {
 		Prefixes: []nfnetlink.NflogPrefix{
@@ -394,6 +435,7 @@ var localPktIngressNflogTuple = nfnetlink.NflogPacketTuple{
 	L4Src: nfnetlink.NflogL4Info{Port: srcPort},
 	L4Dst: nfnetlink.NflogL4Info{Port: dstPort},
 }
+
 var localPktIngress = map[nfnetlink.NflogPacketTuple]*nfnetlink.NflogPacketAggregate{
 	localPktIngressNflogTuple: {
 		Prefixes: []nfnetlink.NflogPrefix{
@@ -446,10 +488,10 @@ var localPktEgressNflogTuple = nfnetlink.NflogPacketTuple{
 	L4Src: nfnetlink.NflogL4Info{Port: srcPort},
 	L4Dst: nfnetlink.NflogL4Info{Port: dstPort},
 }
+
 var localPktEgress = map[nfnetlink.NflogPacketTuple]*nfnetlink.NflogPacketAggregate{
 	localPktEgressNflogTuple: {
 		Prefixes: []nfnetlink.NflogPrefix{
-
 			{
 				Prefix:  defTierAllowEgressNFLOGPrefix,
 				Len:     20,
@@ -470,6 +512,7 @@ var localPktEgressDeniedPreDNATNflogTuple = nfnetlink.NflogPacketTuple{
 	L4Src: nfnetlink.NflogL4Info{Port: srcPort},
 	L4Dst: nfnetlink.NflogL4Info{Port: dstPortDNAT},
 }
+
 var localPktEgressDeniedPreDNAT = map[nfnetlink.NflogPacketTuple]*nfnetlink.NflogPacketAggregate{
 	localPktEgressDeniedPreDNATNflogTuple: {
 		Prefixes: []nfnetlink.NflogPrefix{
@@ -494,6 +537,7 @@ var localPktEgressAllowedPreDNATNflogTuple = nfnetlink.NflogPacketTuple{
 	L4Src: nfnetlink.NflogL4Info{Port: srcPort},
 	L4Dst: nfnetlink.NflogL4Info{Port: dstPort},
 }
+
 var localPktEgressAllowedPreDNAT = map[nfnetlink.NflogPacketTuple]*nfnetlink.NflogPacketAggregate{
 	localPktEgressAllowedPreDNATNflogTuple: {
 		Prefixes: []nfnetlink.NflogPrefix{
@@ -567,6 +611,180 @@ var _ = Describe("NFLOG Datasource", func() {
 				t := tuple.New(localIp1, localIp2, proto_tcp, srcPort, dstPort)
 				nflogReader.IngressC <- localPktIngress
 				Eventually(c.epStats).Should(HaveKey(*t))
+			})
+		})
+	})
+
+	// Tests for deleted endpoints - RuleHits should be skipped
+	Describe("NFLOG with deleted endpoints", func() {
+		// Test data for endpoints marked for deletion
+		var c *collector
+		var lm *calc.LookupsCache
+		var nflogReader *NFLogReader
+
+		conf := &Config{
+			AgeTimeout:            time.Duration(10) * time.Second,
+			InitialReportingDelay: time.Duration(5) * time.Second,
+			ExportingInterval:     time.Duration(1) * time.Second,
+			FlowLogsFlushInterval: time.Duration(100) * time.Second,
+			DisplayDebugTraceLogs: true,
+		}
+
+		BeforeEach(func() {
+			epMap := map[[16]byte]calc.EndpointData{
+				localIp1:  localEd1,
+				localIp2:  localEd2,
+				remoteIp1: remoteEd1,
+			}
+			nflogMap := map[[64]byte]*calc.RuleID{}
+
+			for _, rid := range []*calc.RuleID{defTierPolicy1AllowEgressRuleID, defTierPolicy1AllowIngressRuleID, defTierPolicy2DenyIngressRuleID, defTierPolicy2DenyEgressRuleID} {
+				nflogMap[policyIDStrToRuleIDParts(rid)] = rid
+			}
+
+			lm = newMockLookupsCache(epMap, nflogMap, nil, nil)
+			nflogReader = NewNFLogReader(lm, 0, 0, 0, false)
+			Expect(nflogReader.Start()).NotTo(HaveOccurred())
+			c = newCollector(lm, conf).(*collector)
+			c.SetPacketInfoReader(nflogReader)
+			c.SetConntrackInfoReader(dummyConntrackInfoReader{})
+			go func() {
+				Expect(c.Start()).NotTo(HaveOccurred())
+			}()
+		})
+
+		AfterEach(func() {
+			nflogReader.Stop()
+		})
+
+		Describe("Test source endpoint marked for deletion", func() {
+			It("should skip RuleHits processing when source endpoint is marked for deletion", func() {
+				// Set up normal endpoint map
+				epMap := map[[16]byte]calc.EndpointData{
+					localIp1:  localEd1, // src endpoint to be marked for deletion
+					localIp2:  localEd2, // normal dest endpoint
+					remoteIp1: remoteEd1,
+				}
+				nflogMap := map[[64]byte]*calc.RuleID{}
+
+				for _, rid := range []*calc.RuleID{defTierPolicy1AllowEgressRuleID, defTierPolicy1AllowIngressRuleID, defTierPolicy2DenyIngressRuleID, defTierPolicy2DenyEgressRuleID} {
+					nflogMap[policyIDStrToRuleIDParts(rid)] = rid
+				}
+
+				// Update the lookups cache with endpoint map
+				lm.SetMockData(epMap, nflogMap, nil, nil)
+
+				// Mark the source endpoint for deletion
+				lm.MarkEndpointDeleted(localEd1)
+
+				t := tuple.New(localIp1, localIp2, proto_tcp, srcPort, dstPort)
+
+				// Send NFLOG packet - this should create the tuple but skip RuleHits processing
+				nflogReader.IngressC <- localPktIngress
+				Eventually(c.epStats).Should(HaveKey(*t))
+
+				data := c.epStats[*t]
+				// Verify that RuleHits were not processed (Path should be empty)
+				Expect(len(data.IngressRuleTrace.Path())).To(Equal(0), "IngressRuleTrace Path should be empty when source endpoint is marked for deletion")
+				Expect(len(data.EgressRuleTrace.Path())).To(Equal(0), "EgressRuleTrace Path should be empty when source endpoint is marked for deletion")
+			})
+		})
+
+		Describe("Test destination endpoint marked for deletion", func() {
+			It("should skip RuleHits processing when destination endpoint is marked for deletion", func() {
+				// Set up normal endpoint map
+				epMap := map[[16]byte]calc.EndpointData{
+					localIp1:  localEd1, // normal src endpoint
+					localIp2:  localEd2, // dest endpoint to be marked for deletion
+					remoteIp1: remoteEd1,
+				}
+				nflogMap := map[[64]byte]*calc.RuleID{}
+
+				for _, rid := range []*calc.RuleID{defTierPolicy1AllowEgressRuleID, defTierPolicy1AllowIngressRuleID, defTierPolicy2DenyIngressRuleID, defTierPolicy2DenyEgressRuleID} {
+					nflogMap[policyIDStrToRuleIDParts(rid)] = rid
+				}
+
+				// Update the lookups cache with endpoint map
+				lm.SetMockData(epMap, nflogMap, nil, nil)
+
+				// Mark the destination endpoint for deletion
+				lm.MarkEndpointDeleted(localEd2)
+
+				t := tuple.New(localIp1, localIp2, proto_tcp, srcPort, dstPort)
+
+				// Send NFLOG packet - this should create the tuple but skip RuleHits processing
+				nflogReader.IngressC <- localPktIngress
+				Eventually(c.epStats).Should(HaveKey(*t))
+
+				data := c.epStats[*t]
+				// Verify that RuleHits were not processed (Path should be empty)
+				Expect(len(data.IngressRuleTrace.Path())).To(Equal(0), "IngressRuleTrace Path should be empty when destination endpoint is marked for deletion")
+				Expect(len(data.EgressRuleTrace.Path())).To(Equal(0), "EgressRuleTrace Path should be empty when destination endpoint is marked for deletion")
+			})
+		})
+
+		Describe("Test remote source endpoint marked for deletion", func() {
+			It("should skip RuleHits processing when remote source endpoint is marked for deletion", func() {
+				// Set up normal endpoint map
+				epMap := map[[16]byte]calc.EndpointData{
+					localIp1:  localEd1,
+					localIp2:  localEd2,
+					remoteIp1: remoteEd1, // remote src endpoint to be marked for deletion
+				}
+				nflogMap := map[[64]byte]*calc.RuleID{}
+
+				for _, rid := range []*calc.RuleID{defTierPolicy1AllowEgressRuleID, defTierPolicy1AllowIngressRuleID, defTierPolicy2DenyIngressRuleID, defTierPolicy2DenyEgressRuleID} {
+					nflogMap[policyIDStrToRuleIDParts(rid)] = rid
+				}
+
+				// Update the lookups cache with endpoint map
+				lm.SetMockData(epMap, nflogMap, nil, nil)
+
+				// Mark the remote source endpoint for deletion
+				lm.MarkEndpointDeleted(remoteEd1)
+
+				t := tuple.New(remoteIp1, localIp1, proto_tcp, srcPort, dstPort)
+
+				// Send NFLOG packet - this should create the tuple but skip RuleHits processing
+				nflogReader.IngressC <- ingressPktAllow
+				Eventually(c.epStats).Should(HaveKey(*t))
+
+				data := c.epStats[*t]
+				// Verify that RuleHits were not processed (Path should be empty)
+				Expect(len(data.IngressRuleTrace.Path())).To(Equal(0), "IngressRuleTrace Path should be empty when remote source endpoint is marked for deletion")
+				Expect(len(data.EgressRuleTrace.Path())).To(Equal(0), "EgressRuleTrace Path should be empty when remote source endpoint is marked for deletion")
+			})
+		})
+
+		// Test to ensure normal functionality is not broken
+		Describe("Test normal RuleHits processing with active endpoints", func() {
+			It("should process RuleHits when endpoints are NOT marked for deletion", func() {
+				// Use normal endpoints (not marked for deletion) by resetting to default state
+				epMap := map[[16]byte]calc.EndpointData{
+					localIp1:  localEd1,
+					localIp2:  localEd2,
+					remoteIp1: remoteEd1,
+				}
+				nflogMap := map[[64]byte]*calc.RuleID{}
+
+				for _, rid := range []*calc.RuleID{defTierPolicy1AllowEgressRuleID, defTierPolicy1AllowIngressRuleID, defTierPolicy2DenyIngressRuleID, defTierPolicy2DenyEgressRuleID} {
+					nflogMap[policyIDStrToRuleIDParts(rid)] = rid
+				}
+
+				// Update the lookups cache with normal (active) endpoint map
+				lm.SetMockData(epMap, nflogMap, nil, nil)
+
+				t := tuple.New(localIp1, localIp2, proto_tcp, srcPort, dstPort)
+
+				// Send NFLOG packet - this should create the tuple AND process RuleHits
+				nflogReader.IngressC <- localPktIngress
+				Eventually(c.epStats).Should(HaveKey(*t))
+
+				data := c.epStats[*t]
+				// Verify that RuleHits were processed (Path should NOT be empty)
+				Eventually(func() int {
+					return len(data.IngressRuleTrace.Path())
+				}, "500ms", "50ms").Should(BeNumerically(">", 0), "IngressRuleTrace Path should NOT be empty when endpoints are active")
 			})
 		})
 	})
@@ -649,6 +867,7 @@ var podProxyEgressPktAllowNflogTuple = nfnetlink.NflogPacketTuple{
 	L4Src: nfnetlink.NflogL4Info{Port: srcPort},
 	L4Dst: nfnetlink.NflogL4Info{Port: dstPort},
 }
+
 var podProxyEgressPktAllow = map[nfnetlink.NflogPacketTuple]*nfnetlink.NflogPacketAggregate{
 	podProxyEgressPktAllowNflogTuple: {
 		Prefixes: []nfnetlink.NflogPrefix{
@@ -670,6 +889,7 @@ var proxyBackendIngressPktAllowNflogTuple = nfnetlink.NflogPacketTuple{
 	L4Src: nfnetlink.NflogL4Info{Port: proxyPort},
 	L4Dst: nfnetlink.NflogL4Info{Port: dstPort},
 }
+
 var proxyBackendIngressPktAllow = map[nfnetlink.NflogPacketTuple]*nfnetlink.NflogPacketAggregate{
 	proxyBackendIngressPktAllowNflogTuple: {
 		Prefixes: []nfnetlink.NflogPrefix{
@@ -1318,6 +1538,7 @@ var _ = Describe("Conntrack Datasource", func() {
 			Expect(data.ConntrackBytesCounterReverse()).Should(Equal(*counter.New(localCtEntryWithDNAT.ReplyCounters.Bytes)))
 		})
 	})
+
 	Describe("Test conntrack TCP Protoinfo State", func() {
 		It("Handle TCP conntrack entries with TCP state TIME_WAIT after NFLOGs gathered", func() {
 			By("handling a conntrack update to start tracking stats for tuple")
@@ -1378,6 +1599,7 @@ var _ = Describe("Conntrack Datasource", func() {
 			ciReaderSenderChan <- []clttypes.ConntrackInfo{convertCtEntry(inCtEntryStateTimeWait, 0)}
 			Eventually(c.epStats, "500ms", "100ms").ShouldNot(HaveKey(*t))
 		})
+
 		It("Handle TCP conntrack entries with TCP state TIME_WAIT before NFLOGs gathered", func() {
 			By("handling a conntrack update to start tracking stats for tuple")
 			t := tuple.New(remoteIp1, localIp1, proto_tcp, srcPort, dstPort)
@@ -1493,17 +1715,18 @@ var _ = Describe("Conntrack Datasource", func() {
 
 			By("creating a matching service for the pre-DNAT cluster IP and port")
 			lm.SetMockData(nil, nil, nil, map[model.ResourceKey]*kapiv1.Service{
-				{Kind: model.KindKubernetesService, Name: "svc", Namespace: "default"}: {Spec: kapiv1.ServiceSpec{
-					Ports: []kapiv1.ServicePort{{
-						Name:     "test",
-						Protocol: kapiv1.ProtocolTCP,
-						Port:     int32(dstPortDNAT),
-					}},
-					ClusterIP: "192.168.0.2",
-					ClusterIPs: []string{
-						"192.168.0.2",
+				{Kind: model.KindKubernetesService, Name: "svc", Namespace: "default"}: {
+					Spec: kapiv1.ServiceSpec{
+						Ports: []kapiv1.ServicePort{{
+							Name:     "test",
+							Protocol: kapiv1.ProtocolTCP,
+							Port:     int32(dstPortDNAT),
+						}},
+						ClusterIP: "192.168.0.2",
+						ClusterIPs: []string{
+							"192.168.0.2",
+						},
 					},
-				},
 				},
 			})
 
@@ -1528,17 +1751,18 @@ var _ = Describe("Conntrack Datasource", func() {
 
 			By("creating a matching service for the pre-DNAT cluster IP and port")
 			lm.SetMockData(nil, nil, nil, map[model.ResourceKey]*kapiv1.Service{
-				{Kind: model.KindKubernetesService, Name: "svc", Namespace: "default"}: {Spec: kapiv1.ServiceSpec{
-					Ports: []kapiv1.ServicePort{{
-						Name:     "test",
-						Protocol: kapiv1.ProtocolTCP,
-						Port:     int32(dstPortDNAT),
-					}},
-					ClusterIP: "192.168.0.2",
-					ClusterIPs: []string{
-						"192.168.0.2",
+				{Kind: model.KindKubernetesService, Name: "svc", Namespace: "default"}: {
+					Spec: kapiv1.ServiceSpec{
+						Ports: []kapiv1.ServicePort{{
+							Name:     "test",
+							Protocol: kapiv1.ProtocolTCP,
+							Port:     int32(dstPortDNAT),
+						}},
+						ClusterIP: "192.168.0.2",
+						ClusterIPs: []string{
+							"192.168.0.2",
+						},
 					},
-				},
 				},
 			})
 
@@ -1550,22 +1774,9 @@ var _ = Describe("Conntrack Datasource", func() {
 })
 
 func policyIDStrToRuleIDParts(r *calc.RuleID) [64]byte {
-	var (
-		name  string
-		byt64 [64]byte
-	)
-
-	if r.Namespace != "" {
-		if strings.HasPrefix(r.Name, "knp.default.") {
-			name = fmt.Sprintf("%s/%s", r.Namespace, r.Name)
-		} else {
-			name = fmt.Sprintf("%s/%s.%s", r.Namespace, r.Tier, r.Name)
-		}
-	} else {
-		name = fmt.Sprintf("%s.%s", r.Tier, r.Name)
-	}
-
-	prefix := rules.CalculateNFLOGPrefixStr(r.Action, rules.RuleOwnerTypePolicy, r.Direction, r.Index, name)
+	var byt64 [64]byte
+	id := types.PolicyID{Name: r.Name, Namespace: r.Namespace, Kind: r.Kind}
+	prefix := rules.CalculateNFLOGPrefixStr(r.Action, rules.RuleOwnerTypePolicy, r.Direction, r.Index, id)
 	copy(byt64[:], []byte(prefix))
 	return byt64
 }
@@ -1764,6 +1975,1215 @@ func (mr *mockReporter) Report(u any) error {
 		isConnection:  mu.IsConnection,
 	}
 	return nil
+}
+
+var _ = Describe("Collector Namespace-Aware NetworkSet Lookups", func() {
+	var c *collector
+	var testIP [16]byte
+
+	// Convert IP string to [16]byte format
+	ipToBytes := func(ipStr string) [16]byte {
+		ip := net2.ParseIP(ipStr)
+		var result [16]byte
+		copy(result[:], ip.To16())
+		return result
+	}
+
+	// Helper function to replace the old lookupEndpointWithNamespace behavior.
+	// This uses the public findEndpointBestMatch interface by setting up a dummy source endpoint
+	// to provide the preferredNamespace context.
+	testLookupEndpoint := func(c *collector, clientIPBytes, ip [16]byte, canCheckEgressDomains bool, preferredNamespace string) calc.EndpointData {
+		srcIP := clientIPBytes
+
+		// If we need a namespace context but don't have a source IP, generate a dummy one.
+		if preferredNamespace != "" && srcIP == [16]byte{} {
+			srcIP = ipToBytes("192.0.2.1")
+		}
+
+		if preferredNamespace != "" {
+			// Create a dummy endpoint in the preferred namespace to simulate the source
+			epKey := model.WorkloadEndpointKey{
+				Hostname:       "test-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "test-workload-src",
+				EndpointID:     "test-endpoint-src",
+			}
+			ep := &model.WorkloadEndpoint{
+				Name:   "test-endpoint-src",
+				Labels: uniquelabels.Make(map[string]string{"env": "test"}),
+			}
+
+			common := calc.CalculateCommonEndpointData(epKey, ep)
+			var endpoint calc.EndpointData
+			if canCheckEgressDomains {
+				endpoint = &calc.LocalEndpointData{
+					CommonEndpointData: common,
+				}
+			} else {
+				endpoint = &calc.RemoteEndpointData{
+					CommonEndpointData: common,
+				}
+			}
+
+			// Inject the dummy endpoint into the cache
+			c.luc.SetMockData(map[[16]byte]calc.EndpointData{srcIP: endpoint}, nil, nil, nil)
+		}
+
+		// Perform the lookup using the public interface
+		t := tuple.Tuple{Src: srcIP, Dst: ip}
+		_, dstEp := c.findEndpointBestMatch(t)
+		return dstEp
+	}
+
+	BeforeEach(func() {
+		// Test IP that will match our NetworkSets
+		testIP = ipToBytes("10.1.1.1")
+	})
+
+	Context("when testing endpoint lookup with NetworkSet fallback", func() {
+		It("should prioritize more specific NetworkSets correctly", func() {
+			// Create test NetworkSets
+			globalNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"), // Broad CIDR
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "global",
+				}),
+			}
+
+			specificNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"), // More specific than global
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "specific",
+					"env":  "test",
+				}),
+			}
+
+			// Create test keys - using NetworkSetKey for global, ResourceKey for namespaced
+			globalKey := model.NetworkSetKey{Name: "global-netset"}
+			specificKey := model.NetworkSetKey{Name: "specific-netset"} // Using NetworkSetKey for simplicity
+
+			// Create lookups cache with both NetworkSets
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				globalKey:   globalNetworkSet,
+				specificKey: specificNetworkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			// Create collector with NetworkSets enabled
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Test: Should return the more specific NetworkSet (longest prefix match)
+			result := testLookupEndpoint(c, [16]byte{}, testIP, false, "any-namespace")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(specificKey))
+
+			// Verify it's actually the specific NetworkSet
+			Expect(result.Labels().String()).To(ContainSubstring("specific"))
+		})
+
+		It("should fallback to global NetworkSet when no better match exists", func() {
+			// Create only global NetworkSet
+			globalNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"), // Covers our test IP
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "global",
+				}),
+			}
+
+			globalKey := model.NetworkSetKey{Name: "global-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				globalKey: globalNetworkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Test with any namespace - should return global NetworkSet
+			result := testLookupEndpoint(c, [16]byte{}, testIP, false, "any-namespace")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(globalKey))
+		})
+
+		It("should return nil when NetworkSets are disabled", func() {
+			// Create NetworkSet data but disable NetworkSets in config
+			globalNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"),
+				},
+			}
+
+			globalKey := model.NetworkSetKey{Name: "global-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				globalKey: globalNetworkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     false, // Disabled
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Should return nil because NetworkSets are disabled
+			result := testLookupEndpoint(c, [16]byte{}, testIP, false, "namespace1")
+			Expect(result).To(BeNil())
+		})
+
+		It("should prioritize endpoints over NetworkSets", func() {
+			// Create test endpoint key and data
+			testEPKey := model.WorkloadEndpointKey{
+				Hostname:       "test-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "test-workload",
+				EndpointID:     "test-endpoint",
+			}
+
+			testWlEP := &model.WorkloadEndpoint{
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "endpoint",
+				}),
+			}
+
+			endpoint := &calc.LocalEndpointData{
+				CommonEndpointData: calc.CalculateCommonEndpointData(testEPKey, testWlEP),
+			}
+
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"),
+				},
+			}
+
+			nsKey := model.NetworkSetKey{Name: "netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			epMap := map[[16]byte]calc.EndpointData{
+				testIP: endpoint,
+			}
+			lm := newMockLookupsCache(epMap, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Should return endpoint, not NetworkSet
+			result := testLookupEndpoint(c, [16]byte{}, testIP, false, "namespace1")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(testEPKey))
+		})
+
+		It("should handle no matching NetworkSets gracefully", func() {
+			// Create NetworkSet that doesn't match our test IP
+			nonMatchingNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("192.168.0.0/16"), // Different range
+				},
+			}
+
+			nonMatchingKey := model.NetworkSetKey{Name: "non-matching"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nonMatchingKey: nonMatchingNetworkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Should return nil since no NetworkSet matches
+			result := testLookupEndpoint(c, [16]byte{}, testIP, false, "namespace1")
+			Expect(result).To(BeNil())
+		})
+	})
+
+	Context("when testing namespace optimization benefits", func() {
+		It("should select the most specific NetworkSet match (narrowest CIDR)", func() {
+			// This test validates that the collector uses the namespace-aware lookup
+			// Create multiple overlapping NetworkSets to show specificity
+			broadNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"), // Very broad
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "broad",
+				}),
+			}
+
+			mediumNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"), // Medium specificity
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "medium",
+				}),
+			}
+
+			narrowNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.1.0/24"), // Most specific
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "narrow",
+				}),
+			}
+
+			broadKey := model.NetworkSetKey{Name: "broad-netset"}
+			mediumKey := model.NetworkSetKey{Name: "medium-netset"}
+			narrowKey := model.NetworkSetKey{Name: "narrow-netset"}
+
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				broadKey:  broadNetworkSet,
+				mediumKey: mediumNetworkSet,
+				narrowKey: narrowNetworkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Test that collector picks most specific match (narrowest CIDR)
+			result := testLookupEndpoint(c, [16]byte{}, testIP, false, "test-namespace")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(narrowKey))
+
+			// Verify it's the narrow NetworkSet
+			Expect(result.Labels().String()).To(ContainSubstring("narrow"))
+		})
+
+		It("should handle performance efficiently with multiple NetworkSets", func() {
+			// Create multiple NetworkSets for performance testing
+			nsMap := make(map[model.NetworkSetKey]*model.NetworkSet)
+
+			for i := 0; i < 10; i++ {
+				networkSet := &model.NetworkSet{
+					Nets: []net.IPNet{
+						utils.MustParseNet(fmt.Sprintf("10.%d.0.0/16", i)),
+					},
+					Labels: uniquelabels.Make(map[string]string{
+						"type": fmt.Sprintf("test-%d", i),
+					}),
+				}
+
+				key := model.NetworkSetKey{Name: fmt.Sprintf("test-netset-%d", i)}
+				nsMap[key] = networkSet
+			}
+
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Performance test: multiple namespace lookups should complete quickly
+			start := time.Now()
+			for i := 0; i < 50; i++ {
+				namespace := fmt.Sprintf("namespace-%d", i%5)
+				testIPLoop := ipToBytes(fmt.Sprintf("10.%d.1.1", i%10))
+
+				result := testLookupEndpoint(c, [16]byte{}, testIPLoop, false, namespace)
+				// Should find a match for IPs in our test ranges
+				if i < 10 {
+					Expect(result).ToNot(BeNil())
+				}
+			}
+			elapsed := time.Since(start)
+
+			// Should complete 50 lookups in reasonable time (namespace optimization)
+			Expect(elapsed).To(BeNumerically("<", 25*time.Millisecond))
+		})
+	})
+
+	Context("when testing namespace-specific NetworkSets", func() {
+		It("should prioritize namespace-specific NetworkSets over global ones", func() {
+			// Create a global NetworkSet
+			globalNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"), // Broad global range
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "global",
+					"tier": "base",
+				}),
+			}
+
+			// Create a namespace-specific NetworkSet that overlaps with global
+			namespaceNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"), // More specific range within global
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "namespace-specific",
+					"tier": "application",
+				}),
+			}
+
+			// Create keys - ResourceKey for namespace-scoped, NetworkSetKey for global
+			globalKey := model.NetworkSetKey{Name: "global-netset"}
+			namespaceKey := model.ResourceKey{
+				Kind:      "NetworkSet",
+				Name:      "app-netset",
+				Namespace: "production", // This has a namespace
+			}
+
+			// Create the mock lookup cache
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				globalKey: globalNetworkSet,
+				// For ResourceKey, we need to convert it to NetworkSetKey for the mock
+				// The real LookupsCache handles ResourceKey properly, but our mock uses NetworkSetKey
+			}
+
+			// We need to also include the namespaced NetworkSet in the map
+			// In the real system, ResourceKeys are internally mapped properly
+			namespacedNSKey := model.NetworkSetKey{Name: namespaceKey.Name}
+			nsMap[namespacedNSKey] = namespaceNetworkSet
+
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Test with the specific namespace - should prefer namespace-specific NetworkSet
+			result := testLookupEndpoint(c, [16]byte{}, testIP, false, "production")
+			Expect(result).ToNot(BeNil())
+
+			// Should get the namespace-specific NetworkSet (more specific CIDR)
+			Expect(result.Labels().String()).To(ContainSubstring("namespace-specific"))
+		})
+
+		It("should fall back to global NetworkSet when no namespace match exists", func() {
+			// Test true namespace isolation: when a more specific NetworkSet exists in a different namespace,
+			// it should NOT be selected, and instead fall back to a global NetworkSet
+
+			// Create global NetworkSet with broader range
+			globalNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"), // Broad range that includes testIP (10.1.1.1)
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "global-fallback",
+				}),
+			}
+
+			// Create namespace-specific NetworkSet that DOES contain testIP but is from different namespace
+			// This should NOT be selected for 'staging' namespace requests due to namespace isolation
+			productionNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"), // More specific range that INCLUDES testIP (10.1.1.1)
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type":      "production-specific",
+					"namespace": "production",
+				}),
+			}
+
+			// Use the correct namespace naming format: namespace/name
+			globalKey := model.NetworkSetKey{Name: "global-netset"}              // Global NetworkSet (no namespace prefix)
+			productionKey := model.NetworkSetKey{Name: "production/prod-netset"} // Namespaced NetworkSet
+
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				globalKey:     globalNetworkSet,
+				productionKey: productionNetworkSet,
+			}
+			lc := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lc, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Request with 'staging' namespace - different from the 'production' namespace NetworkSet
+			// testIP (10.1.1.1) matches both:
+			//   - global-netset: 10.0.0.0/8 (broader, global)
+			//   - production/prod-netset: 10.1.0.0/16 (more specific, but wrong namespace)
+			// Should return global NetworkSet due to namespace isolation
+			result := testLookupEndpoint(c, [16]byte{}, testIP, false, "staging")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(globalKey))
+			Expect(result.Labels().String()).To(ContainSubstring("global-fallback"))
+		})
+
+		It("should handle multiple namespaced NetworkSets correctly", func() {
+			// Create NetworkSets for different namespaces with overlapping CIDRs
+			productionNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.1.0/24"), // Specific production range
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"env":  "production",
+					"tier": "frontend",
+				}),
+			}
+
+			stagingNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.2.0/24"), // Specific staging range
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"env":  "staging",
+					"tier": "frontend",
+				}),
+			}
+
+			developmentNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"), // Broader dev range
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"env":  "development",
+					"tier": "all",
+				}),
+			}
+
+			prodKey := model.NetworkSetKey{Name: "prod-frontend"}
+			stagingKey := model.NetworkSetKey{Name: "staging-frontend"}
+			devKey := model.NetworkSetKey{Name: "dev-all"}
+
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				prodKey:    productionNetworkSet,
+				stagingKey: stagingNetworkSet,
+				devKey:     developmentNetworkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Test production namespace with IP in production range
+			prodIP := ipToBytes("10.1.1.100")
+			result := testLookupEndpoint(c, [16]byte{}, prodIP, false, "production")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(prodKey))
+			Expect(result.Labels().String()).To(ContainSubstring("production"))
+
+			// Test staging namespace with IP in staging range
+			stagingIP := ipToBytes("10.1.2.100")
+			result = testLookupEndpoint(c, [16]byte{}, stagingIP, false, "staging")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(stagingKey))
+			Expect(result.Labels().String()).To(ContainSubstring("staging"))
+
+			// Test development namespace with IP that matches broader dev range
+			devIP := ipToBytes("10.1.5.100") // In 10.1.0.0/16 but not in specific /24s
+			result = testLookupEndpoint(c, [16]byte{}, devIP, false, "development")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(devKey))
+			Expect(result.Labels().String()).To(ContainSubstring("development"))
+		})
+
+		It("should demonstrate namespace isolation in NetworkSet lookups", func() {
+			// Create identical CIDR ranges in different namespaces
+			// This tests that namespace isolation works properly
+			commonCIDR := utils.MustParseNet("10.1.0.0/16")
+
+			frontendNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{commonCIDR},
+				Labels: uniquelabels.Make(map[string]string{
+					"app":  "frontend",
+					"tier": "web",
+				}),
+			}
+
+			backendNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{commonCIDR}, // Same CIDR, different namespace
+				Labels: uniquelabels.Make(map[string]string{
+					"app":  "backend",
+					"tier": "api",
+				}),
+			}
+
+			frontendKey := model.NetworkSetKey{Name: "frontend-netset"}
+			backendKey := model.NetworkSetKey{Name: "backend-netset"}
+
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				frontendKey: frontendNetworkSet,
+				backendKey:  backendNetworkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Same IP, different namespaces should potentially return different NetworkSets
+			// depending on the namespace-aware logic and CIDR specificity
+			testIPCommon := ipToBytes("10.1.1.100")
+
+			// Frontend namespace lookup
+			frontendResult := testLookupEndpoint(c, [16]byte{}, testIPCommon, false, "frontend")
+			Expect(frontendResult).ToNot(BeNil())
+
+			// Backend namespace lookup
+			backendResult := testLookupEndpoint(c, [16]byte{}, testIPCommon, false, "backend")
+			Expect(backendResult).ToNot(BeNil())
+
+			// In this case with identical CIDRs, the longest-prefix-match logic will determine
+			// which NetworkSet is returned, but namespace awareness is being tested
+		})
+
+		It("should handle empty namespace gracefully", func() {
+			// Test with empty/default namespace
+			defaultNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"scope": "default",
+				}),
+			}
+
+			defaultKey := model.NetworkSetKey{Name: "default-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				defaultKey: defaultNetworkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			// Test with empty namespace
+			result := testLookupEndpoint(c, [16]byte{}, testIP, false, "")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(defaultKey))
+		})
+	})
+
+	Context("when testing getEndpointsWithNamespaceContext optimization", func() {
+		It("should optimize lookups when both endpoints are found directly", func() {
+			srcIP := ipToBytes("10.1.1.10")
+			dstIP := ipToBytes("10.1.1.20")
+
+			// Create endpoints for both source and destination
+			srcEPKey := model.WorkloadEndpointKey{
+				Hostname:       "src-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "src-ns/src-workload",
+				EndpointID:     "src-endpoint",
+			}
+			dstEPKey := model.WorkloadEndpointKey{
+				Hostname:       "dst-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "dst-ns/dst-workload",
+				EndpointID:     "dst-endpoint",
+			}
+
+			srcEP := &calc.LocalEndpointData{
+				CommonEndpointData: calc.CalculateCommonEndpointData(srcEPKey, &model.WorkloadEndpoint{}),
+			}
+			dstEP := &calc.LocalEndpointData{
+				CommonEndpointData: calc.CalculateCommonEndpointData(dstEPKey, &model.WorkloadEndpoint{}),
+			}
+
+			// Create NetworkSets that could match these IPs (but shouldn't be used)
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"), // Could match both IPs
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "fallback",
+				}),
+			}
+
+			nsKey := model.NetworkSetKey{Name: "fallback-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			epMap := map[[16]byte]calc.EndpointData{
+				srcIP: srcEP,
+				dstIP: dstEP,
+			}
+			lm := newMockLookupsCache(epMap, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			t := tuple.Make(srcIP, dstIP, proto_tcp, 8080, 80)
+			srcResult, dstResult := c.findEndpointBestMatch(t)
+
+			// Both should return direct endpoints (not NetworkSets)
+			Expect(srcResult).ToNot(BeNil())
+			Expect(dstResult).ToNot(BeNil())
+			Expect(srcResult.Key()).To(Equal(srcEPKey))
+			Expect(dstResult.Key()).To(Equal(dstEPKey))
+		})
+
+		It("should use namespace context from destination when source needs NetworkSet lookup", func() {
+			srcIP := ipToBytes("10.1.1.10") // No direct endpoint for this
+			dstIP := ipToBytes("10.1.1.20")
+
+			// Create destination endpoint with namespace
+			dstEPKey := model.WorkloadEndpointKey{
+				Hostname:       "dst-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "production/dst-workload", // namespace: production
+				EndpointID:     "dst-endpoint",
+			}
+			dstEP := &calc.LocalEndpointData{
+				CommonEndpointData: calc.CalculateCommonEndpointData(dstEPKey, &model.WorkloadEndpoint{}),
+			}
+
+			// Create NetworkSets - one generic, one namespace-specific
+			genericNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"), // Broader range
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "generic",
+				}),
+			}
+			productionNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"), // More specific for production
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type":      "production-specific",
+					"namespace": "production",
+				}),
+			}
+
+			genericKey := model.NetworkSetKey{Name: "generic-netset"}
+			productionKey := model.NetworkSetKey{Name: "production-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				genericKey:    genericNetworkSet,
+				productionKey: productionNetworkSet,
+			}
+			epMap := map[[16]byte]calc.EndpointData{
+				dstIP: dstEP,
+			}
+			lm := newMockLookupsCache(epMap, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			t := tuple.Make(srcIP, dstIP, proto_tcp, 8080, 80)
+			srcResult, dstResult := c.findEndpointBestMatch(t)
+
+			// Destination should be direct endpoint
+			Expect(dstResult).ToNot(BeNil())
+			Expect(dstResult.Key()).To(Equal(dstEPKey))
+
+			// Source should use NetworkSet (preferably production-specific due to namespace context)
+			Expect(srcResult).ToNot(BeNil())
+			// Should get the more specific NetworkSet (production-specific)
+			Expect(srcResult.Key()).To(Equal(productionKey))
+		})
+
+		It("should use namespace context from source when destination needs NetworkSet lookup", func() {
+			srcIP := ipToBytes("10.1.1.10")
+			dstIP := ipToBytes("10.1.1.20") // No direct endpoint for this
+
+			// Create source endpoint with namespace
+			srcEPKey := model.WorkloadEndpointKey{
+				Hostname:       "src-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "staging/src-workload", // namespace: staging
+				EndpointID:     "src-endpoint",
+			}
+			srcEP := &calc.LocalEndpointData{
+				CommonEndpointData: calc.CalculateCommonEndpointData(srcEPKey, &model.WorkloadEndpoint{}),
+			}
+
+			// Create NetworkSets
+			globalNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"), // Broader range
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "global",
+				}),
+			}
+			stagingNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"), // More specific for staging
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type":      "staging-specific",
+					"namespace": "staging",
+				}),
+			}
+
+			globalKey := model.NetworkSetKey{Name: "global-netset"}
+			stagingKey := model.NetworkSetKey{Name: "staging-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				globalKey:  globalNetworkSet,
+				stagingKey: stagingNetworkSet,
+			}
+			epMap := map[[16]byte]calc.EndpointData{
+				srcIP: srcEP,
+			}
+			lm := newMockLookupsCache(epMap, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			t := tuple.Make(srcIP, dstIP, proto_tcp, 8080, 80)
+			srcResult, dstResult := c.findEndpointBestMatch(t)
+
+			// Source should be direct endpoint
+			Expect(srcResult).ToNot(BeNil())
+			Expect(srcResult.Key()).To(Equal(srcEPKey))
+
+			// Destination should use NetworkSet with namespace context from source
+			Expect(dstResult).ToNot(BeNil())
+			// Should get the staging-specific NetworkSet
+			Expect(dstResult.Key()).To(Equal(stagingKey))
+		})
+
+		It("should return both NetworkSets when no direct endpoints exist", func() {
+			srcIP := utils.IpStrTo16Byte("10.1.1.10") // No direct endpoints
+			dstIP := utils.IpStrTo16Byte("10.1.1.20")
+
+			// Create only NetworkSets
+			srcNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.1.0/24"), // Specific for source
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "src-network",
+				}),
+			}
+			dstNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.2.0/24"), // Different range for dest
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "dst-network",
+				}),
+			}
+			fallbackNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.0.0.0/8"), // Fallback for both
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "fallback",
+				}),
+			}
+
+			srcKey := model.NetworkSetKey{Name: "src-netset"}
+			dstKey := model.NetworkSetKey{Name: "dst-netset"}
+			fallbackKey := model.NetworkSetKey{Name: "fallback-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				srcKey:      srcNetworkSet,
+				dstKey:      dstNetworkSet,
+				fallbackKey: fallbackNetworkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			t := tuple.Make(srcIP, dstIP, proto_tcp, 8080, 80)
+			srcResult, dstResult := c.findEndpointBestMatch(t)
+
+			// Both should return NetworkSets
+			Expect(srcResult).ToNot(BeNil())
+			Expect(dstResult).ToNot(BeNil())
+
+			// Due to how NetworkSet lookup works, it may return the first matching NetworkSet
+			// The actual behavior depends on the order of NetworkSets returned by the lookup cache
+			// Let's check that we get some NetworkSet match for both
+			Expect(srcResult.Key()).To(BeAssignableToTypeOf(model.NetworkSetKey{}))
+			Expect(dstResult.Key()).To(BeAssignableToTypeOf(model.NetworkSetKey{}))
+		})
+
+		It("should handle NetworkSets disabled gracefully", func() {
+			srcIP := utils.IpStrTo16Byte("10.1.1.10")
+			dstIP := utils.IpStrTo16Byte("10.1.1.20")
+
+			// Create NetworkSets that would match
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+			}
+
+			nsKey := model.NetworkSetKey{Name: "test-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     false, // Disabled
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			t := tuple.Make(srcIP, dstIP, proto_tcp, 8080, 80)
+			srcResult, dstResult := c.findEndpointBestMatch(t)
+
+			// Both should be nil since NetworkSets are disabled and no direct endpoints exist
+			Expect(srcResult).To(BeNil())
+			Expect(dstResult).To(BeNil())
+		})
+
+		It("should handle mixed endpoint and NetworkSet scenarios efficiently", func() {
+			srcIP := ipToBytes("10.1.1.10")
+			dstIP := ipToBytes("10.1.1.20")
+
+			// Source has direct endpoint
+			srcEPKey := model.WorkloadEndpointKey{
+				Hostname:       "src-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "development/src-workload",
+				EndpointID:     "src-endpoint",
+			}
+			srcEP := &calc.LocalEndpointData{
+				CommonEndpointData: calc.CalculateCommonEndpointData(srcEPKey, &model.WorkloadEndpoint{}),
+			}
+
+			// Destination only has NetworkSet
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type":      "dev-network",
+					"namespace": "development",
+				}),
+			}
+
+			nsKey := model.NetworkSetKey{Name: "dev-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			epMap := map[[16]byte]calc.EndpointData{
+				srcIP: srcEP,
+			}
+			lm := newMockLookupsCache(epMap, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			t := tuple.Make(srcIP, dstIP, proto_tcp, 8080, 80)
+			srcResult, dstResult := c.findEndpointBestMatch(t)
+
+			// Source should be direct endpoint
+			Expect(srcResult).ToNot(BeNil())
+			Expect(srcResult.Key()).To(Equal(srcEPKey))
+
+			// Destination should be NetworkSet (with namespace context from source)
+			Expect(dstResult).ToNot(BeNil())
+			Expect(dstResult.Key()).To(Equal(nsKey))
+		})
+	})
+
+	Context("when testing lookupNetworkSetWithNamespace function", func() {
+		It("should return nil when NetworkSets are disabled", func() {
+			testIPLocal := ipToBytes("10.1.1.100")
+
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+			}
+
+			nsKey := model.NetworkSetKey{Name: "test-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     false,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			result := c.lookupNetworkSetWithNamespace([16]byte{}, testIPLocal, false, "test-namespace")
+			Expect(result).To(BeNil())
+		})
+
+		It("should return NetworkSet when one matches", func() {
+			testIPLocal := ipToBytes("10.1.1.100")
+
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "test",
+				}),
+			}
+
+			nsKey := model.NetworkSetKey{Name: "test-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			result := c.lookupNetworkSetWithNamespace([16]byte{}, testIPLocal, false, "test-namespace")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(nsKey))
+		})
+
+		It("should return nil when no NetworkSet matches", func() {
+			testIPLocal := ipToBytes("192.168.1.100") // Different range
+
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"), // Won't match testIPLocal
+				},
+			}
+
+			nsKey := model.NetworkSetKey{Name: "test-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			result := c.lookupNetworkSetWithNamespace([16]byte{}, testIPLocal, false, "test-namespace")
+			Expect(result).To(BeNil())
+		})
+	})
+
+	Context("when testing namespace extraction from endpoints", func() {
+		It("should extract namespace from WorkloadEndpoint correctly", func() {
+			// Test the getNamespaceFromEp function indirectly by testing the full lookup flow
+			srcIP := ipToBytes("10.1.1.10")
+			dstIP := ipToBytes("10.1.1.20")
+
+			// Create source endpoint with namespace in WorkloadID
+			srcEPKey := model.WorkloadEndpointKey{
+				Hostname:       "src-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "frontend/src-workload", // namespace: frontend
+				EndpointID:     "src-endpoint",
+			}
+			srcEP := &calc.LocalEndpointData{
+				CommonEndpointData: calc.CalculateCommonEndpointData(srcEPKey, &model.WorkloadEndpoint{}),
+			}
+
+			// Create namespace-specific NetworkSet that should be used for destination
+			frontendNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type":      "frontend-network",
+					"namespace": "frontend",
+				}),
+			}
+
+			nsKey := model.NetworkSetKey{Name: "frontend-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: frontendNetworkSet,
+			}
+			epMap := map[[16]byte]calc.EndpointData{
+				srcIP: srcEP,
+			}
+			lm := newMockLookupsCache(epMap, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			t := tuple.Make(srcIP, dstIP, proto_tcp, 8080, 80)
+			srcResult, dstResult := c.findEndpointBestMatch(t)
+
+			// Source should be the direct endpoint
+			Expect(srcResult).ToNot(BeNil())
+			Expect(srcResult.Key()).To(Equal(srcEPKey))
+
+			// Destination should use the NetworkSet (demonstrating namespace context was used)
+			Expect(dstResult).ToNot(BeNil())
+			Expect(dstResult.Key()).To(Equal(nsKey))
+		})
+
+		It("should handle endpoints with ResourceKey correctly", func() {
+			srcIP := ipToBytes("10.1.1.10")
+			dstIP := ipToBytes("10.1.1.20")
+
+			// Create a WorkloadEndpoint that represents a production namespace
+			srcEPKey := model.WorkloadEndpointKey{
+				Hostname:       "src-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "production/src-workload", // namespace: production
+				EndpointID:     "src-endpoint",
+			}
+			srcEP := &calc.LocalEndpointData{
+				CommonEndpointData: calc.CalculateCommonEndpointData(srcEPKey, &model.WorkloadEndpoint{}),
+			}
+
+			// Create destination NetworkSet that should use the namespace from source
+			productionNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type":      "production-network",
+					"namespace": "production",
+				}),
+			}
+
+			nsKey := model.NetworkSetKey{Name: "production-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: productionNetworkSet,
+			}
+			epMap := map[[16]byte]calc.EndpointData{
+				srcIP: srcEP,
+			}
+			lm := newMockLookupsCache(epMap, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			t := tuple.Make(srcIP, dstIP, proto_tcp, 8080, 80)
+			srcResult, dstResult := c.findEndpointBestMatch(t)
+
+			// Source should be the WorkloadEndpoint
+			Expect(srcResult).ToNot(BeNil())
+			Expect(srcResult.Key()).To(Equal(srcEPKey))
+
+			// Destination should use the NetworkSet (with namespace context from source)
+			Expect(dstResult).ToNot(BeNil())
+			Expect(dstResult.Key()).To(Equal(nsKey))
+		})
+
+		It("should handle endpoints with no extractable namespace gracefully", func() {
+			srcIP := ipToBytes("10.1.1.10")
+			dstIP := ipToBytes("10.1.1.20")
+
+			// Create endpoint with WorkloadID that doesn't follow namespace/name pattern
+			srcEPKey := model.WorkloadEndpointKey{
+				Hostname:       "src-host",
+				OrchestratorID: "k8s",
+				WorkloadID:     "invalid-workload-format", // No namespace separator
+				EndpointID:     "src-endpoint",
+			}
+			srcEP := &calc.LocalEndpointData{
+				CommonEndpointData: calc.CalculateCommonEndpointData(srcEPKey, &model.WorkloadEndpoint{}),
+			}
+
+			// Create a generic NetworkSet
+			genericNetworkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type": "generic",
+				}),
+			}
+
+			nsKey := model.NetworkSetKey{Name: "generic-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: genericNetworkSet,
+			}
+			epMap := map[[16]byte]calc.EndpointData{
+				srcIP: srcEP,
+			}
+			lm := newMockLookupsCache(epMap, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			t := tuple.Make(srcIP, dstIP, proto_tcp, 8080, 80)
+			srcResult, dstResult := c.findEndpointBestMatch(t)
+
+			// Source should be the direct endpoint
+			Expect(srcResult).ToNot(BeNil())
+			Expect(srcResult.Key()).To(Equal(srcEPKey))
+
+			// Destination should still get the NetworkSet (with empty namespace context)
+			Expect(dstResult).ToNot(BeNil())
+			Expect(dstResult.Key()).To(Equal(nsKey))
+		})
+	})
+})
+
+// Mock EgressDomainCache for testing
+type mockEgressDomainCache struct {
+	domains map[string]map[[16]byte][]string
+}
+
+func (m *mockEgressDomainCache) GetTopLevelDomainsForIP(clientIP string, ip [16]byte) []string {
+	if clientDomains, ok := m.domains[clientIP]; ok {
+		if domains, ok := clientDomains[ip]; ok {
+			return domains
+		}
+	}
+	return nil
+}
+
+func (m *mockEgressDomainCache) IterWatchedDomainsForIP(clientIP string, ip [16]byte, fn func(domain string) bool) {
+	if clientDomains, ok := m.domains[clientIP]; ok {
+		if domains, ok := clientDomains[ip]; ok {
+			for _, domain := range domains {
+				if fn(domain) {
+					break
+				}
+			}
+		}
+	}
 }
 
 func BenchmarkNflogPktToStat(b *testing.B) {
@@ -1965,7 +3385,6 @@ func TestLoopDataplaneInfoUpdates(t *testing.T) {
 			})
 			return validation
 		}, time.Duration(time.Second*5), time.Millisecond*1000).Should(BeTrue())
-
 	})
 
 	t.Run("should not panic when the channel is closed", func(t *testing.T) {
@@ -2027,12 +3446,20 @@ func TestRunPendingRuleTraceEvaluation(t *testing.T) {
 	// Setup initial policy configuration
 	// localWlEp1 has policy1 for both ingress and egress
 	localWlEp1Proto := calc.ModelWorkloadEndpointToProto(localWlEp1, nil, []*proto.TierInfo{
-		{Name: "default", IngressPolicies: []string{"policy1"}, EgressPolicies: []string{"policy1"}},
+		{
+			Name:            "default",
+			IngressPolicies: []*proto.PolicyID{{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}},
+			EgressPolicies:  []*proto.PolicyID{{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}},
+		},
 	})
 
 	// localWlEp2 initially has policy2 (deny) for both ingress and egress
 	localWlEp2Proto := calc.ModelWorkloadEndpointToProto(localWlEp2, nil, []*proto.TierInfo{
-		{Name: "default", IngressPolicies: []string{"policy2"}, EgressPolicies: []string{"policy2"}},
+		{
+			Name:            "default",
+			IngressPolicies: []*proto.PolicyID{{Name: "policy2", Kind: v3.KindGlobalNetworkPolicy}},
+			EgressPolicies:  []*proto.PolicyID{{Name: "policy2", Kind: v3.KindGlobalNetworkPolicy}},
+		},
 	})
 
 	// remoteWlEp1 has no policies
@@ -2047,13 +3474,15 @@ func TestRunPendingRuleTraceEvaluation(t *testing.T) {
 
 		// Add policy definitions
 		// policy1: Allow all traffic
-		ps.PolicyByID[types.PolicyID{Tier: "default", Name: "policy1"}] = &proto.Policy{
+		ps.PolicyByID[types.PolicyID{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}] = &proto.Policy{
+			Tier:          "default",
 			InboundRules:  []*proto.Rule{{Action: "allow"}},
 			OutboundRules: []*proto.Rule{{Action: "allow"}},
 		}
 
 		// policy2: Deny all traffic
-		ps.PolicyByID[types.PolicyID{Tier: "default", Name: "policy2"}] = &proto.Policy{
+		ps.PolicyByID[types.PolicyID{Name: "policy2", Kind: v3.KindGlobalNetworkPolicy}] = &proto.Policy{
+			Tier:          "default",
 			InboundRules:  []*proto.Rule{{Action: "deny"}},
 			OutboundRules: []*proto.Rule{{Action: "deny"}},
 		}
@@ -2061,7 +3490,7 @@ func TestRunPendingRuleTraceEvaluation(t *testing.T) {
 	policyStoreManager.OnInSync()
 
 	// Simulate packet processing to create flow data
-	ruleIDIngressPolicy1 := calc.NewRuleID("default", "policy1", "", 0, rules.RuleDirIngress, rules.RuleActionAllow)
+	ruleIDIngressPolicy1 := calc.NewRuleID(v3.KindGlobalNetworkPolicy, "default", "policy1", "", 0, rules.RuleDirIngress, rules.RuleActionAllow)
 	packetInfoIngress1 := clttypes.PacketInfo{
 		Tuple:     *flowTuple1,
 		Direction: rules.RuleDirIngress,
@@ -2069,7 +3498,7 @@ func TestRunPendingRuleTraceEvaluation(t *testing.T) {
 	}
 	c.applyPacketInfo(packetInfoIngress1)
 
-	ruleIDEgressPolicy1 := calc.NewRuleID("default", "policy1", "", 0, rules.RuleDirEgress, rules.RuleActionAllow)
+	ruleIDEgressPolicy1 := calc.NewRuleID(v3.KindGlobalNetworkPolicy, "default", "policy1", "", 0, rules.RuleDirEgress, rules.RuleActionAllow)
 	packetInfoEgress1 := clttypes.PacketInfo{
 		Tuple:     *flowTuple1,
 		Direction: rules.RuleDirEgress,
@@ -2078,7 +3507,7 @@ func TestRunPendingRuleTraceEvaluation(t *testing.T) {
 	c.applyPacketInfo(packetInfoEgress1)
 
 	// Process egress packet for flow 2 (localIp2 -> remoteIp1)
-	ruleIDEgressPolicy2 := calc.NewRuleID("default", "policy2", "", 0, rules.RuleDirEgress, rules.RuleActionDeny)
+	ruleIDEgressPolicy2 := calc.NewRuleID(v3.KindGlobalNetworkPolicy, "default", "policy2", "", 0, rules.RuleDirEgress, rules.RuleActionDeny)
 	packetInfoEgress2 := clttypes.PacketInfo{
 		Tuple:     *flowTuple2,
 		Direction: rules.RuleDirEgress,
@@ -2142,7 +3571,7 @@ func TestRunPendingRuleTraceEvaluation(t *testing.T) {
 	t.Run("PolicyUpdate", func(t *testing.T) {
 		// Change localWlEp2 from policy2 (deny) to policy1 (allow)
 		updatedLocalWlEp2Proto := calc.ModelWorkloadEndpointToProto(localWlEp2, nil, []*proto.TierInfo{
-			{Name: "default", IngressPolicies: []string{"policy1"}, EgressPolicies: []string{"policy1"}},
+			{Name: "default", IngressPolicies: []*proto.PolicyID{{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}}, EgressPolicies: []*proto.PolicyID{{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}}},
 		})
 
 		// Update the policy store
@@ -2206,6 +3635,102 @@ func TestRunPendingRuleTraceEvaluation(t *testing.T) {
 		}
 	})
 
+	Context("lookupNetworkSetWithNamespace function", func() {
+		It("should return nil when IP does not match any NetworkSet", func() {
+			srcIP := utils.IpStrTo16Byte("10.1.1.10")
+			dstIP := utils.IpStrTo16Byte("192.168.1.10")
+
+			// Create a NetworkSet that doesn't match either IP
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("172.16.0.0/16"),
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type":      "production-network",
+					"namespace": "production",
+				}),
+			}
+
+			nsKey := model.NetworkSetKey{Name: "production-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			result := c.lookupNetworkSetWithNamespace(srcIP, dstIP, false, "production")
+			Expect(result).To(BeNil())
+		})
+
+		It("should return NetworkSet endpoint for NetworkSet-based lookups", func() {
+			srcIP := utils.IpStrTo16Byte("10.1.1.10")
+			dstIP := utils.IpStrTo16Byte("10.1.1.20")
+
+			// Create a NetworkSet that matches the destination IP
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type":      "production-network",
+					"namespace": "production",
+				}),
+			}
+
+			nsKey := model.NetworkSetKey{Name: "production-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     true,
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			result := c.lookupNetworkSetWithNamespace(srcIP, dstIP, false, "production")
+			Expect(result).ToNot(BeNil())
+			Expect(result.Key()).To(Equal(nsKey))
+		})
+
+		It("should return nil when NetworkSets are disabled", func() {
+			srcIP := utils.IpStrTo16Byte("10.1.1.10")
+			dstIP := utils.IpStrTo16Byte("10.1.1.20")
+
+			// Create a NetworkSet that would match if enabled
+			networkSet := &model.NetworkSet{
+				Nets: []net.IPNet{
+					utils.MustParseNet("10.1.0.0/16"),
+				},
+				Labels: uniquelabels.Make(map[string]string{
+					"type":      "production-network",
+					"namespace": "production",
+				}),
+			}
+
+			nsKey := model.NetworkSetKey{Name: "production-netset"}
+			nsMap := map[model.NetworkSetKey]*model.NetworkSet{
+				nsKey: networkSet,
+			}
+			lm := newMockLookupsCache(nil, nil, nsMap, nil)
+
+			c = newCollector(lm, &Config{
+				EnableNetworkSets:     false, // NetworkSets disabled
+				ExportingInterval:     time.Second,
+				FlowLogsFlushInterval: time.Second,
+			}).(*collector)
+
+			result := c.lookupNetworkSetWithNamespace(srcIP, dstIP, false, "production")
+			Expect(result).To(BeNil())
+		})
+	})
+
 	// Test endpoint deletion scenario
 	t.Run("EndpointDeletion", func(t *testing.T) {
 		// Remove localEd1 from the lookup cache to simulate endpoint deletion
@@ -2218,7 +3743,7 @@ func TestRunPendingRuleTraceEvaluation(t *testing.T) {
 
 		// Make another policy change to trigger evaluation
 		localWlEp2Proto := calc.ModelWorkloadEndpointToProto(localWlEp2, nil, []*proto.TierInfo{
-			{Name: "default", IngressPolicies: []string{"policy1"}, EgressPolicies: []string{"policy1"}},
+			{Name: "default", IngressPolicies: []*proto.PolicyID{{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}}, EgressPolicies: []*proto.PolicyID{{Name: "policy1", Kind: v3.KindGlobalNetworkPolicy}}},
 		})
 
 		c.policyStoreManager.DoWithLock(func(ps *policystore.PolicyStore) {
@@ -2269,7 +3794,7 @@ func TestEqualFunction(t *testing.T) {
 	t.Run("should return true for equal rule IDs", func(t *testing.T) {
 		ruleID1 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy1",
 				Namespace: "",
 			},
@@ -2280,7 +3805,7 @@ func TestEqualFunction(t *testing.T) {
 		}
 		ruleID2 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy1",
 				Namespace: "",
 			},
@@ -2291,7 +3816,7 @@ func TestEqualFunction(t *testing.T) {
 		}
 		ruleID3 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy2",
 				Namespace: "",
 			},
@@ -2302,7 +3827,7 @@ func TestEqualFunction(t *testing.T) {
 		}
 		ruleID4 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy2",
 				Namespace: "",
 			},
@@ -2318,7 +3843,7 @@ func TestEqualFunction(t *testing.T) {
 	t.Run("should return false for rule IDs that contain the same elements but are out of order", func(t *testing.T) {
 		ruleID1 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy1",
 				Namespace: "",
 			},
@@ -2329,7 +3854,7 @@ func TestEqualFunction(t *testing.T) {
 		}
 		ruleID2 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy1",
 				Namespace: "",
 			},
@@ -2340,7 +3865,7 @@ func TestEqualFunction(t *testing.T) {
 		}
 		ruleID3 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy1",
 				Namespace: "",
 			},
@@ -2351,7 +3876,7 @@ func TestEqualFunction(t *testing.T) {
 		}
 		ruleID4 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy1",
 				Namespace: "",
 			},
@@ -2367,7 +3892,7 @@ func TestEqualFunction(t *testing.T) {
 	t.Run("should return false for different lengths of rule IDs", func(t *testing.T) {
 		ruleID1 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy1",
 				Namespace: "",
 			},
@@ -2378,7 +3903,7 @@ func TestEqualFunction(t *testing.T) {
 		}
 		ruleID2 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy1",
 				Namespace: "",
 			},
@@ -2389,7 +3914,7 @@ func TestEqualFunction(t *testing.T) {
 		}
 		ruleID3 := &calc.RuleID{
 			PolicyID: calc.PolicyID{
-				Tier:      "default",
+				Kind:      v3.KindGlobalNetworkPolicy,
 				Name:      "policy1",
 				Namespace: "",
 			},

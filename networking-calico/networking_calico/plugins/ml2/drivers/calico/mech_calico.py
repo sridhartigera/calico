@@ -40,7 +40,6 @@ from keystoneauth1.identity import v3
 
 from keystoneclient.v3.client import Client as KeystoneClient
 
-import neutron.plugins.ml2.rpc as rpc
 from neutron.agent import rpc as agent_rpc
 from neutron.conf.agent import common as config
 from neutron.objects import ports as ports_object
@@ -330,11 +329,11 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         mech_driver = self
 
         # Make sure we initialise even if we don't see any API calls.
-        eventlet.spawn_after(STARTUP_DELAY_SECS, self._post_fork_init)
+        eventlet.spawn_after(STARTUP_DELAY_SECS, self._post_fork_init, voting=True)
         LOG.info("Created Calico mechanism driver %s", self)
 
     @logging_exceptions(LOG)
-    def _post_fork_init(self):
+    def _post_fork_init(self, voting=False):
         """_post_fork_init
 
         Creates the connection state required for talking to the Neutron DB
@@ -422,29 +421,44 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 state_report_topic = topics.PLUGIN
             self.state_report_rpc = agent_rpc.PluginReportStateAPI(state_report_topic)
 
-            # Elector, for performing leader election.
-            self.elector = Elector(
-                cfg.CONF.calico.elector_name,
-                datamodel_v2.neutron_election_key(calico_config.get_region_string()),
-                old_key=datamodel_v1.NEUTRON_ELECTION_KEY,
-                interval=MASTER_REFRESH_INTERVAL,
-                ttl=MASTER_TIMEOUT,
-            )
+            if voting:
+                # Elector, for performing leader election.
+                self.elector = Elector(
+                    cfg.CONF.calico.elector_name,
+                    datamodel_v2.neutron_election_key(
+                        calico_config.get_region_string()
+                    ),
+                    old_key=datamodel_v1.NEUTRON_ELECTION_KEY,
+                    interval=MASTER_REFRESH_INTERVAL,
+                    ttl=MASTER_TIMEOUT,
+                )
+                LOG.info(
+                    "PID %s: Initializing Calico Elector; "
+                    "this process WILL participate in leader election.",
+                    current_pid,
+                )
+
+                # Start our resynchronization process and status updating. Just in
+                # case we ever get two same threads running, use an epoch counter
+                # to tell the old thread to die.
+                # We deliberately do this last, to ensure that all of the setup
+                # above is complete before we start running.
+                self._epoch += 1
+                eventlet.spawn(self.periodic_resync_thread, self._epoch)
+                if cfg.CONF.calico.etcd_compaction_period_mins > 0:
+                    eventlet.spawn(self.periodic_compaction_thread, self._epoch)
+                eventlet.spawn(self._status_updating_thread, self._epoch)
+                for _ in range(cfg.CONF.calico.num_port_status_threads):
+                    eventlet.spawn(self._loop_writing_port_statuses, self._epoch)
+            else:
+                LOG.info(
+                    "PID %s: Not a voting participant; "
+                    "skipping elector and leader threads.",
+                    current_pid,
+                )
 
             self._my_pid = current_pid
 
-            # Start our resynchronization process and status updating. Just in
-            # case we ever get two same threads running, use an epoch counter
-            # to tell the old thread to die.
-            # We deliberately do this last, to ensure that all of the setup
-            # above is complete before we start running.
-            self._epoch += 1
-            eventlet.spawn(self.periodic_resync_thread, self._epoch)
-            if cfg.CONF.calico.etcd_compaction_period_mins > 0:
-                eventlet.spawn(self.periodic_compaction_thread, self._epoch)
-            eventlet.spawn(self._status_updating_thread, self._epoch)
-            for _ in range(cfg.CONF.calico.num_port_status_threads):
-                eventlet.spawn(self._loop_writing_port_statuses, self._epoch)
             LOG.info(
                 "Calico mechanism driver initialisation done in process %s", current_pid
             )
@@ -1007,7 +1021,7 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.endpoint_syncer.delete_endpoint(port)
 
     @requires_state
-    def send_sg_updates(self, sgids, context):
+    def security_groups_rule_updated(self, context):
         """Called whenever security group rules or membership change.
 
         When a security group rule is added, we need to do the following steps:
@@ -1015,10 +1029,10 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         1. Reread the security rules from the Neutron DB.
         2. Write the updated policy to etcd.
         """
-        TrackTask("SEND_SG_UPDATES")
-        LOG.info("Updating security group IDs %s", sgids)
-        with self._txn_from_context(context, tag="sg-update"):
-            self.policy_syncer.write_sgs_to_etcd(sgids, context)
+        TrackTask("SECURITY_GROUPS_RULE_UPDATED")
+        LOG.info("SECURITY_GROUPS_RULE_UPDATED: %s", context)
+        with self._txn_from_context(context.plugin_context, tag="sg-update"):
+            self.policy_syncer.write_sgs_to_etcd(context.sgids, context.plugin_context)
 
     @contextlib.contextmanager
     def _txn_from_context(self, context, tag="<unset>"):
@@ -1293,24 +1307,6 @@ class CalicoMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 else:
                     # Short sleep to avoid a tight loop.
                     eventlet.sleep(1)
-
-
-# This section monkeypatches the AgentNotifierApi.security_groups_rule_updated
-# method to ensure that the Calico driver gets told about security group
-# updates at all times. This is a deeply unpleasant hack. Please, do as I say,
-# not as I do.
-#
-# For more info, please see issues #635 and #641.
-original_sgr_updated = rpc.AgentNotifierApi.security_groups_rule_updated
-
-
-def security_groups_rule_updated(self, context, sgids):
-    LOG.info("security_groups_rule_updated: %s %s" % (context, sgids))
-    mech_driver.send_sg_updates(sgids, context)
-    original_sgr_updated(self, context, sgids)
-
-
-rpc.AgentNotifierApi.security_groups_rule_updated = security_groups_rule_updated
 
 
 def port_status_change(port, original):
