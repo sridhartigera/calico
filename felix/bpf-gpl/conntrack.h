@@ -700,6 +700,10 @@ static CALI_BPF_INLINE struct calico_ct_result calico_ct_lookup(struct cali_tc_c
 	__u64 now = bpf_ktime_get_ns();
 	v->last_seen = now;
 
+	CALI_CT_DEBUG("Sridhar ct flags 0x%x", v->flags);
+	CALI_CT_DEBUG("Sridhar ct flags2 0x%x", v->flags2);
+	CALI_CT_DEBUG("Sridhar ct flags3 0x%x", v->flags3);
+	CALI_CT_DEBUG("Sridhar ct flags4 0x%x", v->flags4);
 	result.flags = ct_value_get_flags(v);
 
 	// Return the if_index where the CT state was created.
@@ -869,7 +873,7 @@ static CALI_BPF_INLINE struct calico_ct_result calico_ct_lookup(struct cali_tc_c
 		break;
 
 	case CALI_CT_TYPE_NORMAL:
-		CALI_CT_DEBUG("Hit! NORMAL entry.");
+		CALI_CT_DEBUG("Hit! NORMAL entry 0x%x.", result.flags);
 		if (tcp_recycled(syn, v)) {
 			CALI_CT_DEBUG("TCP SYN recycles entry, NEW flow.");
 			cali_ct_delete_elem(&k);

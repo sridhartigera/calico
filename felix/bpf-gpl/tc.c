@@ -2023,7 +2023,6 @@ int calico_tc_skb_send_tcp_rst(struct __sk_buff *skb)
 		//ctx->fwd.res = CALI_RES_REDIR_BACK;
 		//ctx->fwd.mark = CALI_SKB_MARK_BYPASS_FWD;
 		fwd_fib_set(&ctx->fwd, true);
-		fwd_fib_set_flags(&ctx->fwd, BPF_FIB_LOOKUP_OUTPUT);
 	}
 
 	if (skb_refresh_validate_ptrs(ctx, TCP_SIZE)) {

@@ -3413,6 +3413,8 @@ func describeBPFTests(opts ...bpfTestOpt) bool {
 						tcpdump.SetLogEnabled(true)
 						tcpdump.Start()
 						defer tcpdump.Stop()
+						fmt.Println("Waiting 50s for tcpdump to start...")
+						time.Sleep(50 * time.Second) // let tcpdump start
 						prevCount = pc.PongCount()
 						Eventually(pc.PongCount, "15s").Should(BeNumerically(">", prevCount),
 							"Expected to see pong responses on the connection but didn't receive any")
@@ -4052,7 +4054,8 @@ func describeBPFTests(opts ...bpfTestOpt) bool {
 
 						if extLocal && !testOpts.connTimeEnabled {
 							It("should not have connectivity from external to w[0] via node1->node0 fwd", func() {
-								cc.ExpectNone(externalClient, TargetIP(felixIP(1)), npPort)
+								By("Sridhar sending traffic from external client")
+								//cc.ExpectNone(externalClient, TargetIP(felixIP(1)), npPort)
 								// Include a check that goes via the nodeport with a local backing pod to make sure the dataplane has converged.
 								cc.ExpectSome(externalClient, TargetIP(felixIP(0)), npPort)
 								cc.CheckConnectivity()

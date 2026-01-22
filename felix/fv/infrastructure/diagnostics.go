@@ -53,7 +53,7 @@ func dumpFelixDiags(f *Felix) {
 		f.ExecBestEffort("calico-bpf", "ipsets", "dump")
 		f.ExecBestEffort("calico-bpf", "routes", "dump")
 		f.ExecBestEffort("calico-bpf", "nat", "dump")
-		f.ExecBestEffort("calico-bpf", "conntrack", "dump")
+		f.ExecBestEffort("calico-bpf", "conntrack", "dump", "--raw")
 		f.ExecBestEffort("calico-bpf", "arp", "dump")
 		f.ExecBestEffort("calico-bpf", "counters", "dump")
 		f.ExecBestEffort("calico-bpf", "ifstate", "dump")

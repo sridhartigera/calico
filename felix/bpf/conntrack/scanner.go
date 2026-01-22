@@ -252,9 +252,20 @@ func (s *Scanner) Scan() {
 			case ScanVerdictSendRST:
 				// Entry is fine, continue to next scanner.
 				flags := ctVal.Flags()
+				log.Infof("Sridhar ct flags before RST: %v", flags)
 				flags |= v4.FlagSendRST
+				log.Infof("Sridhar ct flags after RST: %v", flags)
+				var newVal ValueInterface
 
-				newVal := v4.NewValueNormal(time.Duration(ctVal.LastSeen()), flags, ctVal.Data().A2B, ctVal.Data().B2A)
+				if ctVal.Type() == TypeNATForward {
+					newVal = v4.NewValueNATForward(time.Duration(ctVal.LastSeen()), flags, (ctVal.ReverseNATKey()).(v4.Key))
+				} else if ctVal.Type() == TypeNATReverse {
+					newVal = v4.NewValueNATReverse(time.Duration(ctVal.LastSeen()), flags,
+						ctVal.Data().A2B, ctVal.Data().B2A, ctVal.Data().TunIP, ctVal.OrigIP(), ctVal.OrigPort())
+				} else {
+
+					newVal = v4.NewValueNormal(time.Duration(ctVal.LastSeen()), flags, ctVal.Data().A2B, ctVal.Data().B2A)
+				}
 				s.ctMap.Update(ctKey.AsBytes(), newVal.AsBytes())
 				log.Infof("Marked conntrack entry to send RST: %v", ctKey)
 				continue

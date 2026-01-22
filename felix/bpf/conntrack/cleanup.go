@@ -333,6 +333,10 @@ again:
 			}
 			sns.cleaned++
 			conntrackCounterStaleNAT.Inc()
+			if proto == ProtoTCP {
+				// For TCP, we send RST to speed up cleanup on both ends.
+				return ScanVerdictSendRST, lastSeen
+			}
 			return ScanVerdictDeleteImmediate, lastSeen
 		}
 		if debug {
@@ -468,6 +472,10 @@ again:
 			}
 			sns.cleaned++
 			conntrackCounterStaleNAT.Inc()
+			if proto == ProtoTCP {
+				// For TCP, we send RST to speed up cleanup on both ends.
+				return ScanVerdictSendRST, lastSeen
+			}
 			return ScanVerdictDeleteImmediate, lastSeen
 		}
 		if debug {
