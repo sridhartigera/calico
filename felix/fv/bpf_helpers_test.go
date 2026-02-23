@@ -27,6 +27,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	api "github.com/projectcalico/api/pkg/apis/projectcalico/v3"
 	log "github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1"
@@ -41,9 +42,12 @@ import (
 	"github.com/projectcalico/calico/felix/bpf/maps"
 	"github.com/projectcalico/calico/felix/bpf/nat"
 	. "github.com/projectcalico/calico/felix/fv/connectivity"
+	"github.com/projectcalico/calico/felix/fv/containers"
 	"github.com/projectcalico/calico/felix/fv/infrastructure"
+	"github.com/projectcalico/calico/felix/fv/utils"
 	"github.com/projectcalico/calico/felix/fv/workload"
 	"github.com/projectcalico/calico/felix/proto"
+	client "github.com/projectcalico/calico/libcalico-go/lib/clientv3"
 )
 
 func typeMetaV1(kind string) metav1.TypeMeta {
@@ -844,4 +848,144 @@ func bpfDumpRoutesV6(felix *infrastructure.Felix) string {
 	out, err := felix.ExecOutput("calico-bpf", "-6", "routes", "dump")
 	Expect(err).NotTo(HaveOccurred())
 	return out
+}
+
+const numNodes = 3
+
+// bpfTestContext holds the shared state for BPF tests, replacing closure variables.
+type bpfTestContext struct {
+	testOpts       bpfTestOptions
+	infra          infrastructure.DatastoreInfra
+	tc             infrastructure.TopologyContainers
+	calicoClient   client.Interface
+	cc             *Checker
+	externalClient *containers.Container
+	deadWorkload   *workload.Workload
+	options        infrastructure.TopologyOptions
+	numericProto   uint8
+	w              [numNodes][2]*workload.Workload
+	hostW          [numNodes]*workload.Workload
+	getInfra       infrastructure.InfraFactory
+
+	// Set up inside the policy Context's BeforeEach
+	pol       *api.GlobalNetworkPolicy
+	k8sClient *kubernetes.Clientset
+
+	// Derived convenience fields
+	testIfTCP              bool
+	testIfNotUDPUConnected bool
+	family                 string
+}
+
+func (s *bpfTestContext) containerIP(c *containers.Container) string {
+	if s.testOpts.ipv6 {
+		return c.IPv6
+	}
+	return c.IP
+}
+
+func (s *bpfTestContext) felixIP(f int) string {
+	return s.containerIP(s.tc.Felixes[f].Container)
+}
+
+func (s *bpfTestContext) ipMask() string {
+	if s.testOpts.ipv6 {
+		return "128"
+	}
+	return "32"
+}
+
+func (s *bpfTestContext) createPolicy(policy *api.GlobalNetworkPolicy) *api.GlobalNetworkPolicy {
+	log.WithField("policy", dumpResource(policy)).Info("Creating policy")
+	policy, err := s.calicoClient.GlobalNetworkPolicies().Create(utils.Ctx, policy, utils.NoOptions)
+	Expect(err).NotTo(HaveOccurred())
+	return policy
+}
+
+func (s *bpfTestContext) updatePolicy(policy *api.GlobalNetworkPolicy) *api.GlobalNetworkPolicy {
+	log.WithField("policy", dumpResource(policy)).Info("Updating policy")
+	policy, err := s.calicoClient.GlobalNetworkPolicies().Update(utils.Ctx, policy, utils.NoOptions)
+	Expect(err).NotTo(HaveOccurred())
+	return policy
+}
+
+func (s *bpfTestContext) setupCluster() {
+	s.tc, s.calicoClient = infrastructure.StartNNodeTopology(numNodes, s.options, s.infra)
+
+	addWorkload := func(run bool, ii, wi, port int, labels map[string]string) *workload.Workload {
+		if labels == nil {
+			labels = make(map[string]string)
+		}
+
+		wIP := fmt.Sprintf("10.65.%d.%d", ii, wi+2)
+		if s.testOpts.ipv6 {
+			wIP = net.ParseIP(fmt.Sprintf("dead:beef::%d:%d", ii, wi+2)).String()
+		}
+		wName := fmt.Sprintf("w%d%d", ii, wi)
+
+		if s.options.UseIPPools {
+			infrastructure.AssignIP(wName, wIP, s.tc.Felixes[ii].Hostname, s.calicoClient)
+		}
+		w := workload.New(s.tc.Felixes[ii], wName, "default",
+			wIP, strconv.Itoa(port), s.testOpts.protocol)
+
+		labels["name"] = w.Name
+		labels["workload"] = "regular"
+
+		w.WorkloadEndpoint.Labels = labels
+		if run {
+			err := w.Start(s.infra)
+			Expect(err).NotTo(HaveOccurred())
+			w.ConfigureInInfra(s.infra)
+		}
+		return w
+	}
+
+	// Start a host networked workload on each host for connectivity checks.
+	for ii := range s.tc.Felixes {
+		// We tell each host-networked workload to open:
+		// TODO: Copied from another test
+		// - its normal (uninteresting) port, 8055
+		// - port 2379, which is both an inbound and an outbound failsafe port
+		// - port 22, which is an inbound failsafe port.
+		// This allows us to test the interaction between do-not-track policy and failsafe
+		// ports.
+		s.hostW[ii] = workload.Run(
+			s.tc.Felixes[ii],
+			fmt.Sprintf("host%d", ii),
+			"default",
+			s.felixIP(ii), // Same IP as felix means "run in the host's namespace"
+			"8055",
+			s.testOpts.protocol)
+
+		s.hostW[ii].WorkloadEndpoint.Labels = map[string]string{"name": s.hostW[ii].Name}
+		s.hostW[ii].ConfigureInInfra(s.infra)
+
+		// Two workloads on each host so we can check the same host and other host cases.
+		s.w[ii][0] = addWorkload(true, ii, 0, 8055, map[string]string{"port": "8055"})
+		s.w[ii][1] = addWorkload(true, ii, 1, 8056, nil)
+	}
+
+	// Create a workload on node 0 that does not run, but we can use it to set up paths
+	s.deadWorkload = addWorkload(false, 0, 2, 8057, nil)
+
+	// We will use this container to model an external client trying to connect into
+	// workloads on a host.  Create a route in the container for the workload CIDR.
+	// TODO: Copied from another test
+	s.externalClient = infrastructure.RunExtClientWithOpts(s.infra, "ext-client", infrastructure.ExtClientOpts{
+		IPv6Enabled: s.testOpts.ipv6,
+	})
+	_ = s.externalClient
+
+	err := s.infra.AddDefaultDeny()
+	Expect(err).NotTo(HaveOccurred())
+	if !s.options.TestManagesBPF {
+		ensureAllNodesBPFProgramsAttached(s.tc.Felixes)
+		for _, f := range s.tc.Felixes {
+			felixReady := func() int {
+				return healthStatus(s.containerIP(f.Container), "9099", "readiness")
+			}
+			Eventually(felixReady, "10s", "500ms").Should(BeGood())
+		}
+	}
 }
