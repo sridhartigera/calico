@@ -212,6 +212,20 @@ func (c *policyProgramCache) store(key policyProgramCacheKey, prog *cachedPolicy
 	c.items[key] = prog
 }
 
+// storeIfAbsent stores the program only if no entry exists for the key.
+// Returns (existing, true) if an entry was already present, or (nil, false) if
+// the new entry was stored. Used to avoid overwriting a cache entry that another
+// goroutine already populated (and leaking duplicate FDs).
+func (c *policyProgramCache) storeIfAbsent(key policyProgramCacheKey, prog *cachedPolicyProgram) (*cachedPolicyProgram, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if existing, ok := c.items[key]; ok {
+		return existing, true
+	}
+	c.items[key] = prog
+	return nil, false
+}
+
 // closeAndClear closes all cached program FDs and resets the cache.
 // Called after all dirty endpoints have been processed in an apply pass.
 func (c *policyProgramCache) closeAndClear() {
@@ -237,16 +251,17 @@ func computePolicyCacheKey(
 	for _, t := range tiers {
 		tb.WriteString(t.Name)
 		tb.WriteByte('|')
-		for _, p := range t.IngressPolicies {
-			tb.WriteString(p.Kind)
-			tb.WriteByte('/')
-			tb.WriteString(p.Namespace)
-			tb.WriteByte('/')
-			tb.WriteString(p.Name)
-			tb.WriteByte(',')
+		tb.WriteString(t.DefaultAction)
+		tb.WriteByte('|')
+		// Only include the policies for the relevant direction since
+		// extractTiers() only uses the matching direction's policies.
+		var policies []*proto.PolicyID
+		if direction == PolDirnIngress {
+			policies = t.IngressPolicies
+		} else {
+			policies = t.EgressPolicies
 		}
-		tb.WriteByte(';')
-		for _, p := range t.EgressPolicies {
+		for _, p := range policies {
 			tb.WriteString(p.Kind)
 			tb.WriteByte('/')
 			tb.WriteString(p.Namespace)
@@ -2852,8 +2867,10 @@ func (d *bpfEndpointManagerDataplane) wepApplyPolicy(ap *tc.AttachPoint,
 			}
 			// Cache hit but split=true: this policy set requires sub-program splitting.
 			// Fall through to per-endpoint compilation (policyMapIndex is per-endpoint).
+		} else {
+			// True cache miss: no cached program for this policy set.
+			bpfPolProgCacheMisses.Inc()
 		}
-		bpfPolProgCacheMisses.Inc()
 
 		// Cache miss or split program: extract rules and compile.
 		rules := m.wepBuildRules(tiers, profileIDs, polDirection)
@@ -4213,11 +4230,19 @@ func (m *bpfEndpointManager) updatePolicyProgramCached(
 	if !split {
 		// Non-split: cache for other endpoints. DON'T close FDs yet —
 		// they'll be closed when the cache is cleared after the apply pass.
-		m.polProgCache.store(cacheKey, &cachedPolicyProgram{
+		//
+		// Use storeIfAbsent to handle the race where multiple goroutines
+		// compile the same cache key concurrently. If another goroutine
+		// already stored an entry, close our duplicate FDs.
+		if _, alreadyExists := m.polProgCache.storeIfAbsent(cacheKey, &cachedPolicyProgram{
 			progFDs: progFDs,
 			insns:   insns,
 			split:   false,
-		})
+		}); alreadyExists {
+			for _, fd := range progFDs {
+				fd.Close()
+			}
+		}
 	} else {
 		// Split: close FDs now, don't cache (bytecode is per-endpoint).
 		for _, fd := range progFDs {
