@@ -830,6 +830,12 @@ func (kds *K8sDatastoreInfra) AddNode(felix *Felix, v4CIDR *net.IPNet, v6CIDR *n
 		nodeIn.Annotations["projectcalico.org/IPv6WireguardInterfaceAddr"] = felix.ExpectedWireguardV6TunnelAddr
 	}
 	log.WithField("nodeIn", nodeIn).Debug("Node defined")
+
+	// Save the desired status and clear it from the input; Status must be
+	// set via the /status subresource, not in the Create body.
+	desiredStatus := nodeIn.Status
+	nodeIn.Status = v1.NodeStatus{}
+
 	var nodeOut *v1.Node
 	var err error
 	delay := 1 * time.Second
@@ -846,6 +852,12 @@ func (kds *K8sDatastoreInfra) AddNode(felix *Felix, v4CIDR *net.IPNet, v6CIDR *n
 		panic(err)
 	}
 	log.WithField("nodeOut", nodeOut).Debug("Created node")
+
+	nodeOut.Status = desiredStatus
+	_, err = kds.K8sClient.CoreV1().Nodes().UpdateStatus(context.Background(), nodeOut, metav1.UpdateOptions{})
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (kds *K8sDatastoreInfra) ensureNamespace(name string) {
