@@ -25,6 +25,7 @@ import (
 
 	"github.com/projectcalico/calico/felix/bpf/counters"
 	"github.com/projectcalico/calico/felix/bpf/hook"
+	"github.com/projectcalico/calico/felix/bpf/ifstate"
 	"github.com/projectcalico/calico/felix/bpf/maps"
 )
 
@@ -43,11 +44,21 @@ func init() {
 	countersFlushCmd.Flags().String("iface", "", "Interface name")
 }
 
+// ifaceFlags is loaded once per dump command to determine workload interfaces.
+var ifaceFlags map[int]uint32
+
 var countersDumpCmd = &cobra.Command{
 	Use:   "dump",
 	Short: "dumps counters",
+	Long: `Dumps BPF packet counters per interface.
+
+Counters are displayed with INGRESS, EGRESS, and XDP columns.
+For workload endpoints, INGRESS and EGRESS refer to the endpoint's
+perspective (INGRESS = traffic arriving at the workload, EGRESS =
+traffic leaving the workload).`,
 	Run: func(cmd *cobra.Command, args []string) {
 		iface := parseFlags(cmd)
+		ifaceFlags = loadIfaceFlags()
 		m := counters.Map()
 		if err := m.Open(); err != nil {
 			log.WithError(err).Error("Failed to open counter map.")
@@ -105,6 +116,39 @@ func parseFlags(cmd *cobra.Command) string {
 	return iface
 }
 
+// loadIfaceFlags reads the ifstate map and returns a map from ifindex to flags.
+// Returns nil if the map cannot be read (counters will still work, just without
+// the ingress/egress swap for workloads).
+func loadIfaceFlags() map[int]uint32 {
+	m := ifstate.Map()
+	if err := m.Open(); err != nil {
+		log.WithError(err).Debug("Failed to open ifstate map, workload direction swap disabled.")
+		return nil
+	}
+	defer m.Close()
+
+	flags := make(map[int]uint32)
+	err := m.Iter(func(k, v []byte) maps.IteratorAction {
+		key := ifstate.KeyFromBytes(k)
+		var val ifstate.Value
+		copy(val[:], v)
+		flags[int(key.IfIndex())] = val.Flags()
+		return maps.IterNone
+	})
+	if err != nil {
+		log.WithError(err).Debug("Failed to iterate ifstate map.")
+		return nil
+	}
+	return flags
+}
+
+func isWorkloadIface(ifaceFlags map[int]uint32, ifindex int) bool {
+	if ifaceFlags == nil {
+		return false
+	}
+	return ifaceFlags[ifindex]&ifstate.FlgWEP != 0
+}
+
 func doForAllInterfaces(cmd *cobra.Command, action string, fn func(*cobra.Command, maps.Map, *net.Interface) error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
@@ -160,6 +204,13 @@ func dumpInterface(cmd *cobra.Command, m maps.Map, iface *net.Interface) error {
 	values, err := readInterfaceCounters(m, iface)
 	if err != nil {
 		return err
+	}
+
+	// For workload endpoints, the TC hooks are from the host's perspective:
+	// TC ingress = packets FROM the workload, TC egress = packets TO the workload.
+	// Swap so that the columns reflect the endpoint's perspective instead.
+	if isWorkloadIface(ifaceFlags, iface.Index) {
+		values[hook.Ingress], values[hook.Egress] = values[hook.Egress], values[hook.Ingress]
 	}
 
 	if *jsonOutput {
